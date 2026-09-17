@@ -6,12 +6,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/vimalyad/osspipeline/internal/halt"
 	"github.com/vimalyad/osspipeline/internal/identity"
+	"github.com/vimalyad/osspipeline/internal/machine"
 	"github.com/vimalyad/osspipeline/internal/model"
 	"github.com/vimalyad/osspipeline/internal/store"
 )
@@ -30,6 +34,10 @@ func main() {
 	switch os.Args[1] {
 	case "doctor":
 		code = doctor(root)
+	case "machine":
+		code = machineCmd(root)
+	case "status":
+		code = status(root)
 	case "halt":
 		code = engageHalt(root)
 	case "resume":
@@ -45,6 +53,8 @@ func usage() {
 	fmt.Fprint(os.Stderr, `pipeline <command>
 
   doctor    check stored state, identity config and the kill switch
+  machine   detect what this computer can verify, and re-check every candidate
+  status    what is tracked and what is waiting on you
   halt      stop every scheduled stage (takes a reason)
   resume    lift a halt
 `)
@@ -204,4 +214,132 @@ func firstLine(s string) string {
 		}
 	}
 	return s
+}
+
+// machineCmd detects this machine's capabilities and then re-checks every
+// stored candidate against them, so the effect of the gate is visible on real
+// data rather than asserted.
+func machineCmd(root string) int {
+	ctx := context.Background()
+	p := machine.Detect(ctx)
+	if err := machine.Save(root, p); err != nil {
+		fmt.Fprintln(os.Stderr, "warn: could not cache profile:", err)
+	}
+	fmt.Print(p.Summary())
+	fmt.Printf("capabilities: %v\n\n", p.Capabilities)
+
+	cands, _ := store.New(root).All()
+	type row struct {
+		slug, lane, reason string
+		reject, host       bool
+	}
+	var rows []row
+	counts := map[string]int{}
+	for _, c := range cands {
+		var texts []string
+		texts = append(texts, c.Title)
+		for _, l := range c.Labels {
+			texts = append(texts, l)
+		}
+		if c.Brief != nil {
+			texts = append(texts, c.Brief.Reproduction,
+				c.Brief.MaintainerDesiredApproach,
+				strings.Join(c.Brief.AcceptanceCriteria, " "))
+		}
+		d := machine.Decide(p, machine.Infer(texts...))
+		key := "container"
+		switch {
+		case d.Reject:
+			key = "REJECT"
+		case d.HostOnly:
+			key = "host-only"
+		case d.Lane == machine.LaneNone:
+			key = "blocked"
+		}
+		counts[key]++
+		if d.Reject || d.HostOnly {
+			rows = append(rows, row{c.Slug(), key, d.Reason, d.Reject, d.HostOnly})
+		}
+	}
+
+	fmt.Printf("%d candidates re-checked against this machine:\n", len(cands))
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Printf("  %-10s %d\n", k, counts[k])
+	}
+	if len(rows) > 0 {
+		fmt.Printf("\nwould be routed or refused:\n")
+		sort.Slice(rows, func(i, j int) bool { return rows[i].slug < rows[j].slug })
+		for _, r := range rows {
+			fmt.Printf("  [%s] %s\n      %s\n", r.lane, r.slug, r.reason)
+		}
+	}
+	return 0
+}
+
+// status is the at-a-glance view. Its output is deliberately identical to the
+// Python implementation's, so the two can be diffed during the port -- that
+// comparison is the safety net for the whole rewrite.
+func status(root string) int {
+	cands, bad := store.New(root).All()
+	counts := map[model.Status]int{}
+	for _, c := range cands {
+		counts[c.Status]++
+	}
+	fmt.Printf("%d candidates tracked\n", len(cands))
+
+	type kv struct {
+		s model.Status
+		n int
+	}
+	rows := make([]kv, 0, len(counts))
+	for s, n := range counts {
+		rows = append(rows, kv{s, n})
+	}
+	// Most common first; ties broken by name so runs are reproducible.
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].n != rows[j].n {
+			return rows[i].n > rows[j].n
+		}
+		return rows[i].s < rows[j].s
+	})
+	for _, r := range rows {
+		fmt.Printf("  %4d  %s\n", r.n, r.s)
+	}
+
+	live := map[model.Status]bool{
+		model.StatusProposed: true, model.StatusApproved: true,
+		model.StatusPushed: true, model.StatusPROpen: true,
+		model.StatusChangesRequested: true, model.StatusUpdating: true,
+	}
+	var waiting []*model.Candidate
+	for _, c := range cands {
+		if live[c.Status] {
+			waiting = append(waiting, c)
+		}
+	}
+	if len(waiting) > 0 {
+		fmt.Printf("\nawaiting action:\n")
+		for _, c := range waiting {
+			fmt.Printf("  %-20s %s#%d  %s\n", c.Status, c.Repo, c.Issue, truncate(c.Title, 46))
+		}
+	}
+	for _, b := range bad {
+		fmt.Fprintf(os.Stderr, "  warn: skipping unreadable %s: %v\n", b.Slug, b.Err)
+	}
+	return 0
+}
+
+// truncate cuts to n runes, matching Python's slice semantics on the titles
+// we actually store (which are not ASCII-only).
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }

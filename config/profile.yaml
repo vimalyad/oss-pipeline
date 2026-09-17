@@ -1,0 +1,102 @@
+# What you want to contribute to, and how much of each.
+#
+# A domain is a weighted (topics x languages) pair. Weight drives the share of
+# discovery slots AND the ranking of proposals, so raising one number is how
+# you steer the pipeline -- no code change.
+#
+# Autonomy is per domain and starts at `off` everywhere. It is raised by
+# `pipeline bless`, never by editing this file, because a grant expires and has
+# to be countersigned.
+schema: 1
+user: vimalyad
+display_name: "Vimal Kumar Yadav"
+
+domains:
+  - id: python-cv
+    label: "Computer vision & imaging (Python)"
+    weight: 3
+    languages: [Python]
+    topics: [computer-vision, image-processing, deep-learning, pytorch, machine-learning]
+    keywords: [opencv, kornia, torchvision, albumentations]
+    seed_repos:
+      - kornia/kornia
+      - opencv/opencv-python
+      - albumentations-team/albumentations
+      - pytorch/vision
+      - scikit-learn/scikit-learn
+      - huggingface/datasets
+    autonomy: off
+
+  - id: devops-go
+    label: "Kubernetes & release tooling (Go)"
+    weight: 2
+    languages: [Go]
+    topics: [kubernetes, cli, devops, observability, helm, continuous-delivery]
+    keywords: [helm, argo, prometheus, kind, goreleaser]
+    seed_repos:
+      - kubernetes-sigs/kind
+      - helm/helm
+      - argoproj/argo-cd
+      - prometheus/prometheus
+      - open-telemetry/opentelemetry-collector
+      - goreleaser/goreleaser
+    autonomy: off
+
+  - id: cli-tools
+    label: "Terminal tooling (Go & Rust)"
+    weight: 2
+    languages: [Go, Rust]
+    topics: [cli, terminal, tui, command-line, developer-tools]
+    keywords: [fzf, bat, lazygit, bubbletea, ripgrep]
+    seed_repos:
+      - cli/cli
+      - junegunn/fzf
+      - sharkdp/bat
+      - sharkdp/fd
+      - jesseduffield/lazygit
+      - charmbracelet/bubbletea
+      - astral-sh/ruff
+    autonomy: off
+
+  - id: js-tooling
+    label: "JS/TS build & lint tooling"
+    weight: 1
+    languages: [TypeScript, JavaScript]
+    topics: [linter, formatter, build-tool, testing, javascript]
+    keywords: [eslint, prettier, vite, vitest]
+    seed_repos:
+      - vitejs/vite
+      - vitest-dev/vitest
+      - eslint/eslint
+      - prettier/prettier
+      - typescript-eslint/typescript-eslint
+      - date-fns/date-fns
+    autonomy: off
+
+discovery:
+  # seeded_only | seeded_plus_open | open_only
+  # seeded_plus_open keeps the hand-curated list and lets new repos in slowly.
+  mode: seeded_plus_open
+  require_domain_match: true
+  quarantine_days: 14
+  open_search:
+    enabled: true
+    min_stars: 800
+    # Mega-repos have brutal newcomer queues; a first PR there rarely lands.
+    max_stars: 120000
+    pushed_within_days: 60
+    min_good_first_issues: 3
+    new_repos_per_domain: 3
+
+notifications:
+  channel: ntfy
+  ntfy:
+    server: https://ntfy.sh
+    # The topic IS the capability, so both files are gitignored.
+    topic_file: config/ntfy-topic.txt
+    command_topic_file: config/ntfy-cmd-topic.txt
+  quiet_hours:
+    start: "23:00"
+    end: "08:00"
+    tz: "Asia/Kolkata"
+  digest_at: "09:35"
