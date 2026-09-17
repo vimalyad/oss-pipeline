@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +18,8 @@ import (
 	"github.com/vimalyad/osspipeline/internal/identity"
 	"github.com/vimalyad/osspipeline/internal/machine"
 	"github.com/vimalyad/osspipeline/internal/model"
+	"github.com/vimalyad/osspipeline/internal/policy"
+	"github.com/vimalyad/osspipeline/internal/score"
 	"github.com/vimalyad/osspipeline/internal/store"
 )
 
@@ -38,6 +41,8 @@ func main() {
 		code = machineCmd(root)
 	case "status":
 		code = status(root)
+	case "rescore":
+		code = rescore(root)
 	case "halt":
 		code = engageHalt(root)
 	case "resume":
@@ -55,6 +60,7 @@ func usage() {
   doctor    check stored state, identity config and the kill switch
   machine   detect what this computer can verify, and re-check every candidate
   status    what is tracked and what is waiting on you
+  rescore   re-run the scorer over stored candidates (offline, no API calls)
   halt      stop every scheduled stage (takes a reason)
   resume    lift a halt
 `)
@@ -342,4 +348,69 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(r[:n])
+}
+
+// rescore re-runs the scorer over every stored candidate using only what is
+// already on disk: no API calls, no LLM calls, no network. That makes it free
+// to run, which makes it the parity gate for the port -- the same 224 inputs
+// must produce the same verdicts in both implementations.
+//
+// Output is one line per candidate, sorted, designed to be diffed.
+func rescore(root string) int {
+	cfg, err := policy.Load(root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	id, err := identity.Load(filepath.Join(root, "config", "identity.env"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	st := store.New(root)
+	cands, _ := st.All()
+	sort.Slice(cands, func(i, j int) bool { return cands[i].Slug() < cands[j].Slug() })
+
+	deps := score.Deps{
+		MissingToolchain: missingToolchain,
+		LoadFacts: func(repo string) *model.RepoFacts {
+			f, err := st.LoadRepoFacts(repo)
+			if err != nil {
+				return nil
+			}
+			return f
+		},
+	}
+	pass := 0
+	for _, c := range cands {
+		r := score.Score(c, cfg, id.OtherLogins, deps)
+		verdict := "REJECT"
+		if r.OK {
+			verdict = "PASS"
+			pass++
+		}
+		fmt.Printf("%s\t%s\t%s\n", c.Slug(), verdict, strings.Join(r.Fails, " | "))
+	}
+	fmt.Fprintf(os.Stderr, "\n%d/%d pass\n", pass, len(cands))
+	return 0
+}
+
+// languageBinaries maps a language to the binary needed to build it here.
+// Carried over verbatim so Go and Python agree during the port; container
+// recipe resolution replaces this entirely once the sandbox lands.
+var languageBinaries = map[string]string{
+	"go": "go", "rust": "cargo", "python": "uv",
+	"typescript": "npm", "javascript": "npm",
+	"c++": "cmake", "c": "cmake", "java": "mvn", "ruby": "bundle",
+}
+
+func missingToolchain(language string) string {
+	bin, ok := languageBinaries[strings.ToLower(strings.TrimSpace(language))]
+	if !ok {
+		return ""
+	}
+	if _, err := exec.LookPath(bin); err != nil {
+		return bin
+	}
+	return ""
 }
