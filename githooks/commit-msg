@@ -1,0 +1,26 @@
+#!/bin/sh
+# Blocks AI attribution in commit messages at authoring time.
+# Mechanical enforcement of the no-AI-attribution rule, rather than trusting
+# an LLM to remember it. pre-push re-checks in case this is bypassed.
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+. "$ROOT/config/identity.env"
+# grep -f treats EVERY line as a pattern, comments included -- a bare "#"
+# comment line matches any message containing "Fixes #1". Strip them first.
+PATTERNS_SRC="$ROOT/config/forbidden-trailers.txt"
+PATTERNS=$(mktemp)
+trap 'rm -f "$PATTERNS"' EXIT
+grep -vE '^[[:space:]]*(#|$)' "$PATTERNS_SRC" > "$PATTERNS"
+
+msg_file="$1"
+
+if grep -qiEf "$PATTERNS" "$msg_file"; then
+    hit=$(grep -oiEf "$PATTERNS" "$msg_file" | head -1)
+    printf '\n*** COMMIT BLOCKED by oss-pipeline commit-msg guard ***\n' >&2
+    printf '    AI attribution found in commit message: %s\n' "$hit" >&2
+    printf '    Patterns: %s\n\n' "$PATTERNS" >&2
+    exit 1
+fi
+exit 0

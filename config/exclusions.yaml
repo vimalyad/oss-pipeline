@@ -1,0 +1,11 @@
+# Repos the scorer must never target.
+#
+# NOTE: the user's other GitHub logins are deliberately NOT here. This file is
+# tracked by git; identity.env is not. Listing all three accounts in a tracked
+# file would link them together -- the exact outcome identity isolation exists
+# to prevent. score.repos_touched_by_other_accounts() reads OTHER_LOGINS from
+# config/identity.env instead.
+exclude_repos: []
+banned_ai_policy: []
+cla_signed:
+- pytorch/vision

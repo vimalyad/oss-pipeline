@@ -1,0 +1,71 @@
+# Hard caps. A pipeline that *can* open 50 PRs a day must not.
+caps:
+  prs_per_day: 2
+  max_open_prs: 5
+  max_open_per_repo: 1
+  org_cooldown_days: 3        # after a PR to an org, wait before another
+  max_candidates_per_run: 60  # after round-robin spread, not a sweep cutoff
+  # A candidate rejected because someone had claimed it, or was mid-PR, or the
+  # thread had not converged, deserves another look once that has had time to
+  # change. Structural rejections and your own rejections never come back.
+  reconsider_rejected_after_days: 14
+
+# Contest classification thresholds (days). Objective signals only.
+staleness:
+  author_silent_days: 60
+  changes_requested_days: 30
+  ci_red_untouched_days: 30
+  claim_honoured_days: 30     # respect "I'm working on this" for this long
+  active_pr_days: 30          # activity inside this window => hard exclude
+
+watchlist:
+  tier: 1
+  unlock_merge_rate: 0.5      # tier 2 needs >=50% merge rate over
+  unlock_min_prs: 6           # at least this many closed PRs
+
+scoring:
+  require_converged_thread: true
+
+  # Maintainer buy-in, split from "maintainer told us how".
+  #
+  # Outside contributors cannot apply labels, so a triage-gated label IS proof a
+  # maintainer accepted the issue. Requiring a maintainer to have *stated an
+  # approach* rejected 11 of 14 harvested candidates on the first real sweep --
+  # most good-first-issues carry acceptance without a prescribed fix.
+  #
+  # So: acceptance is always required. An approach is required only when we
+  # otherwise have no definition of done at all (no acceptance criteria
+  # either), because then a patch would be pure guesswork.
+  require_maintainer_acceptance: true
+  require_approach_or_criteria: true
+  require_tests: true
+  require_contributing: false   # soft penalty instead -- see score.py
+  reject_docs_typo_only: true
+  reject_workflow_changes: true      # fork CI usually cannot run these
+  first_time_contributor_window_days: 90
+  stale_issue_penalty_years: 2   # soft penalty, not a rejection
+
+# Labels only someone with triage rights can apply => maintainer accepted it.
+acceptance_labels:
+  - good first issue
+  - good-first-issue
+  - "good first issue :baby:"
+  - help wanted
+  - help-wanted
+  - confirmed
+  - accepted
+  - triaged
+  - bug/confirmed
+  - kind/bug
+  - status/accepted
+
+# Labels that explicitly say the opposite: nobody has triaged this yet.
+untriaged_labels:
+  - triage/pending
+  - needs-triage
+  - needs triage
+  - untriaged
+  - needs-info
+  - needs more info
+  - question
+  - discussion
