@@ -46,20 +46,26 @@ var secrets = []secretPattern{
 	{regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`), "Slack token"},
 }
 
-// workEmail is the other account's address. Committing it under the OSS
-// identity links the two accounts in public, permanently.
-var workEmail = regexp.MustCompile(`(?i)vimal\.yadav@example\.com`)
-
 // ScanSecrets names every kind of credential found in text.
-func ScanSecrets(text string) []string {
+//
+// `private` holds literal strings that must never be published but are not a
+// recognisable credential shape -- the user's other email addresses, for
+// instance. They are passed in from the gitignored identity configuration
+// rather than written here: hardcoding the address this scanner exists to
+// suppress would publish it the moment this repository became public.
+func ScanSecrets(text string, private ...string) []string {
 	var found []string
 	for _, s := range secrets {
 		if s.re.MatchString(text) {
 			found = append(found, s.name)
 		}
 	}
-	if workEmail.MatchString(text) {
-		found = append(found, "work email address")
+	low := strings.ToLower(text)
+	for _, p := range private {
+		if p != "" && strings.Contains(low, strings.ToLower(p)) {
+			found = append(found, "a private address or login")
+			break
+		}
 	}
 	return found
 }
@@ -103,6 +109,9 @@ type Shipment struct {
 	Diff  string
 	// ExistingTopLevel is what the repo had before this branch.
 	ExistingTopLevel map[string]bool
+	// Private are literal strings that must never be published, supplied by
+	// the caller from the gitignored identity file.
+	Private []string
 }
 
 // Problem is one reason a branch must not be submitted.
@@ -120,7 +129,7 @@ func Inspect(s Shipment) []Problem {
 	if strings.TrimSpace(s.Diff) == "" {
 		out = append(out, Problem{Why: "empty diff -- nothing to submit"})
 	}
-	for _, name := range ScanSecrets(s.Diff) {
+	for _, name := range ScanSecrets(s.Diff, s.Private...) {
 		out = append(out, Problem{Why: fmt.Sprintf("diff contains a %s -- refusing to push", name)})
 	}
 	for _, d := range NewTopLevelDirs(s) {

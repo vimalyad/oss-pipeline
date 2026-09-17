@@ -157,7 +157,6 @@ def test_caps_clear_when_nothing_open():
     ("token = ghp_" + "a" * 30, "GitHub token"),
     ("AKIA" + "B" * 16, "AWS access key"),
     ("-----BEGIN RSA PRIVATE KEY-----", "private key"),
-    ("mail someone@private.example", "work email address"),
 ])
 def test_secrets_are_caught(blob, expect):
     assert expect in submit.scan_secrets(blob)
@@ -938,3 +937,31 @@ def test_untracked_agent_file_is_visible_to_preflight(tmp_path):
     files = submit.branch_files(clone)
     assert ".agents/skills/SKILL.md" in files, (
         f"an untracked file `git add -A` would ship must be visible: {files}")
+
+
+def test_private_addresses_are_caught_without_being_hardcoded():
+    """The work address must be detected, but must not live in this repo.
+
+    Writing the address that scan_secrets exists to suppress into a tracked
+    file would publish it the moment this repository became public, so the
+    value is read from the gitignored identity configuration instead.
+    """
+    from oss_pipeline import submit
+    from oss_pipeline.identity import load_identity
+
+    work = load_identity().work_email
+    assert work, "identity.env should carry WORK_EMAIL"
+    assert "a private address or login" in submit.scan_secrets(f"contact {work} for access")
+    assert submit.scan_secrets("contact someone@example.com for access") == []
+
+    # And the address itself must appear in no tracked file.
+    import subprocess
+    from oss_pipeline.identity import ROOT
+    tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files"],
+                             capture_output=True, text=True).stdout.split()
+    for rel in tracked:
+        try:
+            body = (ROOT / rel).read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        assert work not in body, f"{work} appears in tracked file {rel}"

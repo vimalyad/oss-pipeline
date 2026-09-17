@@ -43,7 +43,6 @@ SECRETS = [
     (re.compile(r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----"), "private key"),
     (re.compile(r"sk-[A-Za-z0-9]{32,}"), "API secret key"),
     (re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"), "Slack token"),
-    (re.compile(r"vimal\.yadav@example\.com", re.I), "work email address"),
 ]
 
 MSG_PROMPT = """Write the git commit message for the diff on stdin.
@@ -105,7 +104,23 @@ BODY_FORBIDDEN = re.compile(
 
 
 def scan_secrets(diff: str) -> list[str]:
-    return [name for pattern, name in SECRETS if pattern.search(diff)]
+    """Credentials and private strings that must never reach a public diff.
+
+    The private strings -- the user's other email addresses -- are read from
+    the gitignored identity file rather than written here. Hardcoding the
+    address this function exists to suppress would publish it the moment this
+    repository became public.
+    """
+    found = [name for pattern, name in SECRETS if pattern.search(diff)]
+    low = diff.lower()
+    try:
+        ident = load_identity()
+        private = [ident.work_email, *ident.other_emails]
+    except Exception:
+        private = []
+    if any(p and p.lower() in low for p in private):
+        found.append("a private address or login")
+    return found
 
 
 def _git(clone: Path, *args: str, check: bool = True) -> str:

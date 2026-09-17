@@ -115,7 +115,6 @@ func TestScanSecrets(t *testing.T) {
 		{"private key", "-----BEGIN RSA PRIVATE KEY-----", "private key"},
 		{"anthropic", "sk-ant-" + strings.Repeat("c", 25), "Anthropic API key"},
 		{"slack", "xoxb-1234567890-abc", "Slack token"},
-		{"work email", "contact someone@private.example", "work email address"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := ScanSecrets(tc.text)
@@ -135,6 +134,16 @@ func TestScanSecrets(t *testing.T) {
 	}
 	if got := ScanSecrets("ordinary code with no secrets"); len(got) != 0 {
 		t.Errorf("false positive: %v", got)
+	}
+
+	// Private strings are supplied by the caller, never written here: the
+	// whole point is that this file can be published.
+	got := ScanSecrets("mail someone@private.example for access", "someone@private.example")
+	if len(got) != 1 || got[0] != "a private address or login" {
+		t.Errorf("private address not caught: %v", got)
+	}
+	if got := ScanSecrets("mail someone@private.example", "other@example.com"); len(got) != 0 {
+		t.Errorf("false positive on an unrelated address: %v", got)
 	}
 }
 
