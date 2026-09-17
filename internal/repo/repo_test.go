@@ -203,24 +203,46 @@ func TestTopLevelEntries(t *testing.T) {
 	}
 }
 
-// TestUntrackedAgentFileIsVisibleToTheGuard is the regression test for a hole
-// found while porting: `git diff --name-status HEAD` reports tracked changes
-// only, so a file the implementer created and never committed was invisible to
-// preflight -- and commit runs `git add -A`, which would have shipped it.
-func TestUntrackedAgentFileIsVisibleToTheGuard(t *testing.T) {
+// TestUntrackedFileIsVisibleToTheGuard is the regression test for a hole found
+// while porting: `git diff --name-status HEAD` reports tracked changes only, so
+// a file the implementer created and never committed was invisible to the
+// pre-submit checks -- while commit runs `git add -A`, which would ship it.
+func TestUntrackedFileIsVisibleToTheGuard(t *testing.T) {
 	m := manager(t, t.TempDir())
 	dir := clone(t, m, upstream(t))
 	ctx := context.Background()
 	m.Branch(ctx, dir, &model.Candidate{Repo: "acme/widget", Issue: 1})
 
+	os.WriteFile(filepath.Join(dir, "scratch-notes.md"), []byte("notes\n"), 0o644)
+
+	_, pending := m.NameStatus(ctx, dir)
+	if !strings.Contains(pending, "scratch-notes.md") {
+		t.Fatalf("an untracked file that `git add -A` would commit must be "+
+			"visible to the guard; pending was %q", pending)
+	}
+}
+
+// TestAgentScaffoldingCannotBeStaged is the stronger guarantee that replaced
+// detection for this specific case. Several target repositories ship their own
+// agent skill files and an auto-fix has twice copied one into a clone, so
+// hardening excludes them: `git add -A` cannot stage it at all, which is a
+// better property than catching it afterwards.
+func TestAgentScaffoldingCannotBeStaged(t *testing.T) {
+	m := manager(t, t.TempDir())
+	dir := clone(t, m, upstream(t))
+	if err := identity.ExcludeAgentScaffolding(dir); err != nil {
+		t.Fatal(err)
+	}
 	os.MkdirAll(filepath.Join(dir, ".agents", "skills"), 0o755)
 	os.WriteFile(filepath.Join(dir, ".agents", "skills", "SKILL.md"),
 		[]byte("agent workflow notes\n"), 0o644)
 
-	_, pending := m.NameStatus(ctx, dir)
-	if !strings.Contains(pending, ".agents/skills/SKILL.md") {
-		t.Fatalf("an untracked file that `git add -A` would commit must be "+
-			"visible to the guard; pending was %q", pending)
+	if out, err := exec.Command("git", "-C", dir, "add", "-A").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	staged, _ := exec.Command("git", "-C", dir, "diff", "--cached", "--name-only").Output()
+	if strings.Contains(string(staged), ".agents") {
+		t.Fatalf("agent scaffolding was staged despite the exclude: %q", staged)
 	}
 }
 

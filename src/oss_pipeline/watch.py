@@ -71,6 +71,42 @@ Items:
 {items}"""
 
 
+# Jobs whose only content is "fail if another job failed". One watchlist repo's
+# is literally `echo job failed && exit 1`.
+MIRROR_CHECKS = re.compile(
+    r"^(collector|collect|ci[-_ ]?ok|all[-_ ]?green|required[-_ ]?checks|ci|"
+    r"status|gate|conclusion|summary)$", re.I)
+
+# Step names whose failure means nothing was built or run yet.
+_SETUP_STEP = re.compile(
+    r"^(set up job|setup |install (dependencies|pixi|uv|node|go|rust)|"
+    r"restore cache|checkout|download|actions/|pre-run|configure)", re.I)
+
+_JOB_URL = re.compile(r"/actions/runs/\d+/job/(\d+)")
+
+
+def _infra_reason(repo: str, details_url: str) -> str:
+    """Why this check failed, if the cause was the CI machine rather than the code.
+
+    Reads the job's step conclusions, which is cheap and usually decisive: a
+    failure in a setup step with everything after it skipped cannot be about
+    the diff. Returns "" when the failure looks real, or when anything goes
+    wrong reading it -- an unreadable job must still reach a human.
+    """
+    m = _JOB_URL.search(details_url or "")
+    if not m:
+        return ""
+    try:
+        job = ghapi.rest(f"repos/{repo}/actions/jobs/{m.group(1)}")
+    except Exception:
+        return ""
+    failed = next((s for s in (job or {}).get("steps") or []
+                   if s.get("conclusion") == "failure"), None)
+    if failed and _SETUP_STEP.search(failed.get("name", "")):
+        return f"failed during {failed.get('name')!r}, before anything was built"
+    return ""
+
+
 def _classify(items: list[dict], *, attempts: int = 2) -> dict[str, dict]:
     """Triage feedback. Falls back to needs_reply, which is the safe direction.
 
@@ -169,6 +205,29 @@ def poll(cand: Candidate) -> dict:
         key = f"check:{commit.get('oid','')}:{chk['name']}"
         if key in cand.watch_seen:
             continue
+
+        # A mirror job only reports that some other job failed. Counting it
+        # separately turns one problem into two items for a human to read.
+        if MIRROR_CHECKS.search(chk["name"].strip()):
+            buckets["informational"].append({
+                "id": key, "author": "CI", "kind": "check", "cls": "informational",
+                "body": f"check '{chk['name']}' failed (mirrors another job)",
+                "why": "mirror job", "url": chk["url"], "action": "",
+            })
+            continue
+
+        # A failure during environment setup is the CI machine having a bad
+        # day, not a defect in the diff. Escalating it asks the user to debug
+        # someone else's registry outage.
+        infra = _infra_reason(cand.repo, chk.get("url", ""))
+        if infra:
+            buckets["informational"].append({
+                "id": key, "author": "CI", "kind": "check", "cls": "informational",
+                "body": f"check '{chk['name']}' failed: {infra}",
+                "why": "infrastructure", "url": chk["url"], "action": "",
+            })
+            continue
+
         bucket = "mechanical" if MECHANICAL_CHECKS.search(chk["name"]) else "needs_design"
         buckets[bucket].append({
             "id": key, "author": "CI", "kind": "check", "cls": bucket,

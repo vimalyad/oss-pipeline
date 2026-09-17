@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/vimalyad/osspipeline/internal/guard"
 	"github.com/vimalyad/osspipeline/internal/halt"
 	"github.com/vimalyad/osspipeline/internal/identity"
 	"github.com/vimalyad/osspipeline/internal/machine"
@@ -43,6 +44,8 @@ func main() {
 		code = status(root)
 	case "rescore":
 		code = rescore(root)
+	case "check":
+		code = checkText()
 	case "halt":
 		code = engageHalt(root)
 	case "resume":
@@ -61,6 +64,7 @@ func usage() {
   machine   detect what this computer can verify, and re-check every candidate
   status    what is tracked and what is waiting on you
   rescore   re-run the scorer over stored candidates (offline, no API calls)
+  check     screen a file destined for a public comment or PR body
   halt      stop every scheduled stage (takes a reason)
   resume    lift a halt
 `)
@@ -413,4 +417,39 @@ func missingToolchain(language string) string {
 		return bin
 	}
 	return ""
+}
+
+// checkText screens a file that is about to be posted in public.
+//
+// Everything this pipeline publishes goes through here first. The forbidden
+// vocabulary is not a style preference: an implementer's closing notes once
+// reached a real pull request, complete with first-person remarks about
+// denied commands and a claim that tests had not been run when they had.
+func checkText() int {
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "usage: pipeline check <file>")
+		return 2
+	}
+	b, err := os.ReadFile(os.Args[2])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	text := string(b)
+	bad := 0
+	if phrases := guard.CheckBody(text); len(phrases) > 0 {
+		fmt.Printf("FORBIDDEN  %v\n", phrases)
+		bad++
+	}
+	if secrets := guard.ScanSecrets(text); len(secrets) > 0 {
+		fmt.Printf("SECRETS    %v\n", secrets)
+		bad++
+	}
+	words := len(strings.Fields(text))
+	if bad == 0 {
+		fmt.Printf("clean      %d words, %d lines\n", words,
+			strings.Count(text, "\n")+1)
+		return 0
+	}
+	return 1
 }

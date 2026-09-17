@@ -238,7 +238,44 @@ func HardenClone(clone string, id Identity) error {
 			return fmt.Errorf("harden %s: git %s: %w", clone, strings.Join(s, " "), err)
 		}
 	}
-	return nil
+	return ExcludeAgentScaffolding(clone)
+}
+
+// agentScaffolding is what an implementer may leave behind in a clone.
+//
+// Several target repositories ship their own `.claude/skills/...`, and an
+// auto-fix run has twice produced a copy under `.agents/` -- which `git add -A`
+// would then commit into a public pull request. The submit guard catches that,
+// but catching is weaker than preventing.
+var agentScaffolding = []string{".agents/", ".aider*", ".cursor/", ".codex/"}
+
+// ExcludeAgentScaffolding makes agent leftovers unstageable in this clone.
+//
+// Written to .git/info/exclude rather than .gitignore: it is our local
+// concern, and editing a repository's tracked .gitignore would appear in the
+// diff we are about to ask someone to merge.
+func ExcludeAgentScaffolding(clone string) error {
+	path := filepath.Join(clone, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	existing, _ := os.ReadFile(path)
+	var missing []string
+	for _, p := range agentScaffolding {
+		if !strings.Contains(string(existing), p) {
+			missing = append(missing, p)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	out := string(existing)
+	if out != "" && !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	out += "# added by oss-pipeline: never stage agent scaffolding\n" +
+		strings.Join(missing, "\n") + "\n"
+	return os.WriteFile(path, []byte(out), 0o644)
 }
 
 // EffectiveCredentialHelpers is the chain git will actually consult.

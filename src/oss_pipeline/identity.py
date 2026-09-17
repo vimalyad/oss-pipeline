@@ -160,6 +160,37 @@ def harden_clone(clone: Path, ident: Identity | None = None) -> None:
     # it also means we do not execute an untrusted repo's own hooks.
     _git(clone, "config", "--local", "core.hooksPath", str(ident.hooks_path))
 
+    exclude_agent_scaffolding(clone)
+
+
+# Agent scaffolding the implementer may create in a clone. Several repos ship
+# their own `.claude/skills/...`, and an auto-fix run has twice produced a copy
+# under `.agents/` -- which `git add -A` would then commit into a public PR.
+#
+# The submit guard catches it, but catching is weaker than preventing: listing
+# these in the clone's private exclude file means `git add -A` never stages
+# them in the first place. The guard stays as the second layer.
+AGENT_SCAFFOLDING = (".agents/", ".aider*", ".cursor/", ".codex/")
+
+
+def exclude_agent_scaffolding(clone: Path) -> None:
+    """Make agent scaffolding unstageable in this clone.
+
+    Written to .git/info/exclude rather than .gitignore: it is our local
+    concern, and modifying a repo's tracked .gitignore would show up in the
+    diff we are about to ask someone to merge.
+    """
+    path = clone / ".git" / "info" / "exclude"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = path.read_text() if path.exists() else ""
+    missing = [p for p in AGENT_SCAFFOLDING if p not in existing]
+    if not missing:
+        return
+    header = "" if existing.endswith("\n") or not existing else "\n"
+    path.write_text(existing + header
+                    + "# added by oss-pipeline: never stage agent scaffolding\n"
+                    + "\n".join(missing) + "\n")
+
 
 def effective_credential_helpers(clone: Path) -> list[str]:
     """The helper chain git will actually consult, after reset semantics.
