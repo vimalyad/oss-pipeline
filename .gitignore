@@ -6,3 +6,4 @@ work/
 reports/
 config/identity.env
 logs/
+bin/pipeline
