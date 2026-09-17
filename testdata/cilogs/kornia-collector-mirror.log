@@ -1,0 +1,36 @@
+﻿2026-09-17T09:07:51.0598788Z Current runner version: '2.337.0'
+2026-09-17T09:07:51.0615273Z ##[group]Runner Image Provisioner
+2026-09-17T09:07:51.0615961Z Hosted Compute Agent
+2026-09-17T09:07:51.0616418Z Version: 20260828.587
+2026-09-17T09:07:51.0616920Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+2026-09-17T09:07:51.0617430Z Build Date: 2026-08-28T16:44:25Z
+2026-09-17T09:07:51.0617887Z Worker ID: {28851405-0fba-4256-bd6d-3ab9a021381e}
+2026-09-17T09:07:51.0618388Z Azure Region: centralus
+2026-09-17T09:07:51.0618780Z ##[endgroup]
+2026-09-17T09:07:51.0619740Z ##[group]Operating System
+2026-09-17T09:07:51.0620185Z Ubuntu
+2026-09-17T09:07:51.0620537Z 24.04.5
+2026-09-17T09:07:51.0620926Z LTS
+2026-09-17T09:07:51.0621272Z ##[endgroup]
+2026-09-17T09:07:51.0621694Z ##[group]Runner Image
+2026-09-17T09:07:51.0622121Z Image: ubuntu-24.04
+2026-09-17T09:07:51.0622501Z Version: 20260907.300.1
+2026-09-17T09:07:51.0623368Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260907.300/images/ubuntu/Ubuntu2404-Readme.md
+2026-09-17T09:07:51.0624580Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260907.300
+2026-09-17T09:07:51.0625287Z ##[endgroup]
+2026-09-17T09:07:51.0626030Z ##[group]GITHUB_TOKEN Permissions
+2026-09-17T09:07:51.0627583Z Contents: read
+2026-09-17T09:07:51.0627986Z Metadata: read
+2026-09-17T09:07:51.0628365Z ##[endgroup]
+2026-09-17T09:07:51.0629768Z Secret source: None
+2026-09-17T09:07:51.0630390Z Cache mode: write
+2026-09-17T09:07:51.0630890Z Prepare workflow directory
+2026-09-17T09:07:51.0862285Z Prepare all required actions
+2026-09-17T09:07:51.0931411Z Complete job name: collector
+2026-09-17T09:07:51.1506888Z ##[group]Run echo job failed && exit 1
+2026-09-17T09:07:51.1507649Z [36;1mecho job failed && exit 1[0m
+2026-09-17T09:07:51.6163927Z shell: /usr/bin/bash -e {0}
+2026-09-17T09:07:51.6164845Z ##[endgroup]
+2026-09-17T09:07:51.6301312Z job failed
+2026-09-17T09:07:51.6314233Z ##[error]Process completed with exit code 1.
+2026-09-17T09:07:51.6435370Z Cleaning up orphan processes
