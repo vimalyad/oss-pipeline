@@ -905,3 +905,36 @@ def test_other_logins_are_not_in_a_tracked_config_file():
                 continue
             assert login not in blob, (
                 f"{login} appears in tracked file {rel}; it links the accounts")
+
+
+def test_untracked_agent_file_is_visible_to_preflight(tmp_path):
+    """An untracked file commit() would sweep in must be caught first.
+
+    `git diff --name-status HEAD` lists tracked changes only, so a file the
+    implementer created and never committed was invisible to branch_files() --
+    while commit() runs `git add -A`. Same shape as the .agents incident that
+    reached a public PR: the rule was right, the scope was wrong.
+    """
+    import os
+    import subprocess
+    from oss_pipeline import submit
+
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    env = {**os.environ, "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.com",
+           "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.com"}
+    def git(*args):
+        subprocess.run(["git", "-C", str(clone), *args], check=True,
+                       capture_output=True, env=env)
+    git("init", "-q", "-b", "main")
+    (clone / "a.txt").write_text("x\n")
+    git("add", "-A")
+    git("commit", "-qm", "init")
+
+    agents = clone / ".agents" / "skills"
+    agents.mkdir(parents=True)
+    (agents / "SKILL.md").write_text("agent workflow notes\n")
+
+    files = submit.branch_files(clone)
+    assert ".agents/skills/SKILL.md" in files, (
+        f"an untracked file `git add -A` would ship must be visible: {files}")

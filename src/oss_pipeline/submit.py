@@ -152,6 +152,16 @@ def branch_files(clone: Path) -> list[str]:
         path = path.split("\t")[-1]
         (pending_del if status[:1] == "D" else pending_add).add(path)
 
+    # Untracked files count as shipped. `git diff --name-status HEAD` lists
+    # tracked changes only, so a file the implementer created but has not
+    # committed is invisible here -- while commit() runs `git add -A`, which
+    # sweeps exactly those in. Same shape as the .agents incident: the rule was
+    # right, the scope was wrong.
+    for path in _git(clone, "ls-files", "--others", "--exclude-standard",
+                     check=False).split("\n"):
+        if path.strip():
+            pending_add.add(path.strip())
+
     return sorted((committed | pending_add) - pending_del)
 
 
