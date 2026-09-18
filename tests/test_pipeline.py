@@ -860,7 +860,26 @@ def test_every_live_status_can_reach_a_terminal_outcome():
         assert Status.CLOSED in allowed, f"{live} cannot record a close"
 
 
-def test_target_repo_commands_do_not_see_the_token():
+def test_target_repo_commands_see_no_credential_of_any_kind(monkeypatch):
+    """A denylist of two names let OPENAI_API_KEY walk straight past.
+
+    `go test` runs code the other project controls. It gets no credential of
+    ours, and none of anyone else's that happens to be in this shell.
+    """
+    from oss_pipeline.identity import sandbox_env
+
+    for var in ("GH_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+                "AWS_SECRET_ACCESS_KEY", "SOME_SERVICE_TOKEN", "DB_PASSWORD"):
+        monkeypatch.setenv(var, f"sentinel-{var}")
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    env = sandbox_env()
+    for key, value in env.items():
+        assert not value.startswith("sentinel-"), f"{key} leaked to a target repo"
+    assert env["PATH"] == "/usr/bin", "ordinary variables must survive"
+
+
+def _legacy_token_check():
     """`go test` is code the other project controls. It must not get our PAT."""
     import subprocess
     from pathlib import Path

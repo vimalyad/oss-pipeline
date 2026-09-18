@@ -18,7 +18,7 @@ import subprocess
 from pathlib import Path
 
 from . import audit, repo, toolchain
-from .identity import assert_clone, pipeline_env
+from .identity import sandbox_env, assert_clone, pipeline_env
 from .models import Candidate
 
 PATCH_PROMPT = """You are fixing ONE issue in an existing open-source repository \
@@ -121,12 +121,9 @@ def _run(clone: Path, cmd: str, timeout: int = 1200) -> tuple[int, str]:
     here. Our own git and gh calls still use pipeline_env() and still get it.
     (Stopgap: v2 runs all of this in a container instead.)
     """
-    env = pipeline_env()
-    for k in ("GH_TOKEN", "GITHUB_TOKEN"):
-        env.pop(k, None)
     proc = subprocess.run(
         cmd, shell=True, cwd=clone, capture_output=True, text=True,
-        timeout=timeout, env=env,
+        timeout=timeout, env=sandbox_env(),
     )
     return proc.returncode, (proc.stdout + proc.stderr)[-4000:]
 

@@ -16,6 +16,7 @@ Never trust the hooks alone; ``assert_clone`` runs in-process before every push.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -106,6 +107,27 @@ def token(ident: Identity | None = None) -> str:
             f"-s {ident.keychain_service} -w"
         )
     return proc.stdout.strip()
+
+
+# Environment variables a third-party project's build must never see.
+# A denylist of specific names is the wrong shape -- it was GH_TOKEN and
+# GITHUB_TOKEN, and OPENAI_API_KEY walked straight past it. Match the pattern.
+SECRET_ENV_RE = re.compile(
+    r"(_TOKEN|_SECRET|_KEY|_PASSWORD|_CREDENTIALS|_APIKEY)$|^AWS_|^GH_TOKEN$",
+    re.I,
+)
+
+
+def sandbox_env(ident: Identity | None = None) -> dict[str, str]:
+    """Environment for running a TARGET repository's own commands.
+
+    `go test`, `npm test` and friends execute code that project controls, so
+    they get no credential of ours -- and no credential of anyone else's that
+    happens to be in this shell either.
+    """
+    env = {k: v for k, v in os.environ.items() if not SECRET_ENV_RE.search(k)}
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
 
 
 def pipeline_env(ident: Identity | None = None) -> dict[str, str]:
