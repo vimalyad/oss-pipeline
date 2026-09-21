@@ -165,6 +165,18 @@ func (c *Client) REST(ctx context.Context, path string, o RESTOptions) (string, 
 	return strings.TrimSpace(out), err
 }
 
+// RESTRaw runs an arbitrary gh invocation and returns its stdout, with the
+// same retry and rate-limit handling as everything else here.
+//
+// REST covers the shape almost every caller wants. This exists for the two it
+// cannot express: reading response *headers* (`gh api -i`, which is how the
+// token's scopes are discovered, since GitHub answers a scope-less write with
+// 404 rather than 403) and sending a JSON body on stdin (`--input -`).
+func (c *Client) RESTRaw(ctx context.Context, args []string, stdin string) (string, error) {
+	out, err := c.run(ctx, args, stdin)
+	return strings.TrimSpace(out), err
+}
+
 // RESTInto calls the REST API and decodes into v.
 func (c *Client) RESTInto(ctx context.Context, path string, o RESTOptions, v any) error {
 	out, err := c.REST(ctx, path, o)
