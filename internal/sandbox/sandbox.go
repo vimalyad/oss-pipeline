@@ -106,6 +106,10 @@ type Session struct {
 	Spec   Spec
 	Log    func(string)
 	closed bool
+	// detached records that Detach has run, so Networkless can answer
+	// without another docker call and so nothing can claim an offline run
+	// that never detached.
+	detached bool
 }
 
 func (s *Session) logf(f string, a ...any) {
@@ -302,4 +306,62 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// Detach removes every network from a running session, permanently.
+//
+// The alternative -- install in a networked container, then verify in a fresh
+// one started with --network none -- silently loses the install. A repository's
+// dependencies land in the container's writable layer, not in the
+// bind-mounted clone, so the second container starts with none of them and
+// every test fails on a missing import. Detaching in place keeps the installed
+// environment and still makes the verification run genuinely offline, which is
+// the property that matters: a suite that only passes with network access has
+// not verified the patch.
+//
+// It is one-way on purpose. There is no Attach.
+func (s *Session) Detach(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
+	nets, err := s.networks(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range nets {
+		if err := exec.CommandContext(ctx, "docker", "network", "disconnect", n, s.ID).Run(); err != nil {
+			return fmt.Errorf("%w: disconnect %s: %v", ErrSandbox, n, err)
+		}
+	}
+	// Confirm rather than assume. A detach that quietly failed would leave a
+	// run we describe as offline with full egress, and the whole point of the
+	// offline run is that it can be trusted.
+	left, err := s.networks(ctx)
+	if err != nil {
+		return err
+	}
+	if len(left) > 0 {
+		return fmt.Errorf("%w: still attached to %s", ErrSandbox, strings.Join(left, ", "))
+	}
+	s.detached = true
+	return nil
+}
+
+// Networkless reports whether this session can reach anything.
+func (s *Session) Networkless() bool { return s.detached || !s.Spec.Network }
+
+func (s *Session) networks(ctx context.Context) ([]string, error) {
+	out, err := exec.CommandContext(ctx, "docker", "inspect", s.ID,
+		"--format", "{{range $k, $v := .NetworkSettings.Networks}}{{$k}}\n{{end}}").Output()
+	if err != nil {
+		return nil, fmt.Errorf("%w: inspect: %s", ErrSandbox, stderrOf(err))
+	}
+	var nets []string
+	for _, n := range strings.Split(string(out), "\n") {
+		if n = strings.TrimSpace(n); n != "" {
+			nets = append(nets, n)
+		}
+	}
+	sort.Strings(nets)
+	return nets, nil
 }

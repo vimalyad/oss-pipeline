@@ -55,12 +55,17 @@ var cacheDirs = map[string]struct {
 // indistinguishable from a broken patch. Ownership is handed over at build
 // time, while the Dockerfile is still root.
 var rootOwnedInstallDirs = map[string]string{
-	"python": `RUN d="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
+	// sysconfig's "data" path is the install prefix, not site-packages, and
+	// the whole tree is needed. Handing over site-packages alone looked
+	// sufficient until torch pulled in sympy, which writes a man page to
+	// share/man/man1 and failed the entire install with EACCES after several
+	// minutes of downloading.
+	"python": `RUN d="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["data"])')" \
  && mkdir -p "$d" \
- && chown -R 1000:1000 "$d" "$(dirname "$(command -v python3)")"`,
+ && chown -R 1000:1000 "$d"`,
 	"node": `RUN d="$(npm prefix -g)" \
- && mkdir -p "$d/lib/node_modules" "$d/bin" \
- && chown -R 1000:1000 "$d/lib/node_modules" "$d/bin"`,
+ && mkdir -p "$d" \
+ && chown -R 1000:1000 "$d"`,
 }
 
 // Dockerfile renders the image. The build context is manifests only, never the

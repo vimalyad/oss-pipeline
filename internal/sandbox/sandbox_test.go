@@ -379,3 +379,47 @@ func TestIntegrationCloneConfigHasNoHostPathsInside(t *testing.T) {
 		t.Errorf("%s survived Close", stray)
 	}
 }
+
+// TestIntegrationDetachRemovesEgress covers the install/verify split: a
+// dependency install needs the network, the verification run must not have
+// it, and a second container would lose the install because it lands in the
+// writable layer rather than the clone.
+func TestIntegrationDetachRemovesEgress(t *testing.T) {
+	dockerAvailable(t)
+	s, err := Start(context.Background(), Spec{
+		Image: "ossp-gate:test", Clone: t.TempDir(), Network: true, Limits: DefaultLimits(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	if s.Networkless() {
+		t.Fatal("a session started with Network:true reports itself networkless")
+	}
+	if res, err := s.Run(ctx, "getent hosts github.com"); err != nil || !res.OK() {
+		t.Skipf("no egress available to test the removal of: %v", err)
+	}
+	// Something written before the detach must survive it: that persistence
+	// is the entire reason for detaching rather than starting a new container.
+	// $HOME is in the container's writable layer, which is where an
+	// installed dependency set actually lands.
+	if res, err := s.Run(ctx, "echo installed > \"$HOME/marker\""); err != nil || !res.OK() {
+		t.Fatalf("setup write failed: %v %+v", err, res)
+	}
+
+	if err := s.Detach(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !s.Networkless() {
+		t.Error("Networkless() is false after Detach")
+	}
+	if res, _ := s.Run(ctx, "getent hosts github.com"); res.OK() {
+		t.Error("DNS still resolves after Detach")
+	}
+	res, err := s.Run(ctx, "cat \"$HOME/marker\"")
+	if err != nil || !strings.Contains(res.Output, "installed") {
+		t.Errorf("the container lost its writable layer across Detach: %v %+v", err, res)
+	}
+}

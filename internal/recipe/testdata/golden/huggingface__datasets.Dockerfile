@@ -36,9 +36,9 @@ RUN if ! getent passwd 1000 >/dev/null 2>&1; then \
  && chown -R 1000:1000 /cache/pip \
  && mkdir -p /work && chown 1000:1000 /work
 
-RUN d="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
+RUN d="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["data"])')" \
  && mkdir -p "$d" \
- && chown -R 1000:1000 "$d" "$(dirname "$(command -v python3)")"
+ && chown -R 1000:1000 "$d"
 
 USER 1000:1000
 WORKDIR /work
