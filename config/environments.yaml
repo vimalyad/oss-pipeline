@@ -26,6 +26,12 @@ repos:
     platform: linux/arm64
     install:
       - pip install --upgrade pip
+      # torch before the package, and from the CPU index. On linux/arm64 the
+      # default PyPI wheel is now a CUDA build (2.14.0+cu130); with no GPU
+      # present its CPU linear algebra returns NaN, and kornia's homography
+      # tests fail on an unmodified checkout because of it. The same tests pass
+      # on the host and with 2.14.0+cpu, so it is the wheel, not the code.
+      - pip install torch --index-url https://download.pytorch.org/whl/cpu
       - pip install -e .
       - pip install pytest pytest-timeout
     test:

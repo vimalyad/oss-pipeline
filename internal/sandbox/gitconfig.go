@@ -2,8 +2,10 @@ package sandbox
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -87,4 +89,37 @@ func keyOf(line string) string {
 		return ""
 	}
 	return line[:i]
+}
+
+// ensureVolume creates a named volume if it is missing and hands it to uid
+// 1000.
+//
+// Docker creates a named volume owned by root:root. It copies the image's
+// content into it when the mount point exists in the image, which carries the
+// ownership across -- but a volume masking a path under the bind-mounted clone
+// has no image content to inherit, so it stays root-owned and the container,
+// which runs as uid 1000, cannot write to it. The symptom on kornia was
+// "Permission denied: '/work/.pytest_cache/v'" printed alongside the test
+// output, which is noise at best and a misclassified container failure at
+// worst.
+//
+// The chown needs CAP_CHOWN, and a session drops every capability, so it
+// happens here in a separate throwaway container and only when the volume is
+// being created. An existing volume is left exactly as it is.
+func ensureVolume(ctx context.Context, name string) error {
+	if exec.CommandContext(ctx, "docker", "volume", "inspect", name).Run() == nil {
+		return nil
+	}
+	if out, err := exec.CommandContext(ctx, "docker", "volume", "create",
+		"--label", "ossp.managed=1", name).CombinedOutput(); err != nil {
+		return fmt.Errorf("%w: create volume %s: %s", ErrSandbox, name, strings.TrimSpace(string(out)))
+	}
+	out, err := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"--label", "ossp.managed=1",
+		"--mount", "type=volume,src="+name+",dst=/v",
+		"debian:bookworm-slim", "chown", "1000:1000", "/v").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: chown volume %s: %s", ErrSandbox, name, strings.TrimSpace(string(out)))
+	}
+	return nil
 }

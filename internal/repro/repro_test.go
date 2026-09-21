@@ -204,3 +204,75 @@ func TestSandboxResultOKContract(t *testing.T) {
 		t.Error("a timed-out command reported OK")
 	}
 }
+
+// TestATestVerdictOutranksEnvironmentPatterns is the correction a real run
+// forced. pytest emitted a cache-permission warning alongside a genuine
+// assertion failure; scanning the whole output for environment patterns first
+// let the warning win, and the real failure went unreported.
+func TestATestVerdictOutranksEnvironmentPatterns(t *testing.T) {
+	out := `warnings summary
+  PytestCacheWarning: could not create cache path /work/.pytest_cache/v: [Errno 13] Permission denied
+=========================== short test summary info ============================
+FAILED tests/geometry/test_homography.py::TestFindHomographyDLTIter::test_clean_points - AssertionError
+`
+	got, why := classify(sandbox.Result{Code: 1, Output: out})
+	if got != Reproduced {
+		t.Fatalf("classify = %s (%s); a suite that printed a failure summary ran", got, why)
+	}
+}
+
+func TestEnvironmentStillWinsWhenTheSuiteNeverRan(t *testing.T) {
+	out := "ImportError: libGL.so.1: cannot open shared object file: No such file or directory\n"
+	if got, _ := classify(sandbox.Result{Code: 1, Output: out}); got != Environment {
+		t.Fatalf("classify = %s", got)
+	}
+}
+
+func TestFailingTests(t *testing.T) {
+	tests := []struct {
+		name, out string
+		want      []string
+	}{
+		{"pytest", "FAILED tests/a.py::test_x - AssertionError\nFAILED tests/b.py::test_y\n",
+			[]string{"tests/a.py::test_x", "tests/b.py::test_y"}},
+		{"go", "--- FAIL: TestAlpha (0.01s)\n    --- FAIL: TestBeta/sub (0.00s)\n",
+			[]string{"TestAlpha", "TestBeta/sub"}},
+		{"cargo", "test geom::tests::rotates ... FAILED\n", []string{"geom::tests::rotates"}},
+		{"none", "everything passed\n", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FailingTests(tt.out)
+			if len(got) != len(tt.want) {
+				t.Fatalf("= %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestNewFailuresIgnoresWhatWasAlreadyRed is what makes an imperfect container
+// usable. On linux/arm64 a plain `pip install torch` resolves to a CUDA build
+// whose CPU linear algebra returns NaN, so kornia's homography tests fail on
+// an unmodified checkout. Without a baseline the loop would set about fixing
+// code that was already correct.
+func TestNewFailuresIgnoresWhatWasAlreadyRed(t *testing.T) {
+	before := []Result{{Outcome: Reproduced, Output: "FAILED tests/geometry/test_homography.py::test_clean_points - nan\n"}}
+	after := []Result{{Outcome: Reproduced, Output: "FAILED tests/geometry/test_homography.py::test_clean_points - nan\nFAILED tests/core/test_new.py::test_regression\n"}}
+
+	got := NewFailures(before, after)
+	if len(got) != 1 || got[0] != "tests/core/test_new.py::test_regression" {
+		t.Fatalf("NewFailures = %v, want only the new one", got)
+	}
+	if pre := PreexistingFailures(before); len(pre) != 1 {
+		t.Errorf("PreexistingFailures = %v", pre)
+	}
+	// A change that fixes nothing and breaks nothing must produce no news.
+	if got := NewFailures(before, before); len(got) != 0 {
+		t.Errorf("NewFailures against itself = %v", got)
+	}
+}

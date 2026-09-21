@@ -132,6 +132,11 @@ func Start(ctx context.Context, spec Spec) (*Session, error) {
 		return nil, err
 	}
 	spec.gitConfig = cfg
+	for _, name := range sortedKeys(spec.Volumes) {
+		if err := ensureVolume(ctx, name); err != nil {
+			return nil, err
+		}
+	}
 
 	args := []string{"run", "-d", "--rm=false"}
 	args = append(args, dockerFlags(spec)...)

@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/vimalyad/osspipeline/internal/recipe"
@@ -91,7 +92,21 @@ var envFailures = []struct {
 		"the image is the wrong architecture for this machine"},
 }
 
+// testOutcomeRe matches a line that only a test runner which actually ran can
+// produce: pytest's failure summary, go test's per-test verdict, cargo's, and
+// a compiler's diagnostic.
+var testOutcomeRe = regexp.MustCompile(`(?m)^\s*(FAILED |ERROR |--- FAIL: |FAIL\s|\S+\.go:\d+:\d+: |error\[E\d+\]|test .* \.\.\. FAILED|\d+ (failed|passed))`)
+
 // classify decides whether a failing run says anything about the code.
+//
+// Order matters, and it took a real run to get right. Evidence that the suite
+// produced a verdict outranks the environment patterns, because a suite that
+// printed "FAILED tests/x.py::test_y" ran. Scanning the whole output for
+// environment patterns first lets an unrelated warning win: pytest emitting
+// "PytestCacheWarning: ... Permission denied: /work/.pytest_cache" alongside a
+// genuine assertion failure was classified as a container problem, and the
+// real failure went unreported. The environment patterns are for the case
+// where the suite never got far enough to have an opinion.
 func classify(res sandbox.Result) (Outcome, string) {
 	if res.TimedOut {
 		return Environment, "the command hit the sandbox timeout"
@@ -99,12 +114,89 @@ func classify(res sandbox.Result) (Outcome, string) {
 	if res.OK() {
 		return Passed, ""
 	}
+	if testOutcomeRe.MatchString(res.Output) {
+		return Reproduced, fmt.Sprintf("exit %d, with a test verdict in the output", res.Code)
+	}
 	for _, p := range envFailures {
 		if p.re.MatchString(res.Output) {
 			return Environment, p.why
 		}
 	}
 	return Reproduced, fmt.Sprintf("exit %d", res.Code)
+}
+
+var failingTestRe = []*regexp.Regexp{
+	regexp.MustCompile(`(?m)^FAILED\s+(\S+)`),           // pytest
+	regexp.MustCompile(`(?m)^ERROR\s+(\S+)`),            // pytest collection
+	regexp.MustCompile(`(?m)^\s*--- FAIL: (\S+)`),       // go test
+	regexp.MustCompile(`(?m)^test (\S+) \.\.\. FAILED`), // cargo
+	regexp.MustCompile(`(?m)^\s*\d+\) (\S+)`),           // rspec, mocha
+}
+
+// FailingTests pulls individual failing test identifiers out of a run.
+func FailingTests(output string) []string {
+	var out []string
+	for _, re := range failingTestRe {
+		for _, m := range re.FindAllStringSubmatch(output, -1) {
+			out = append(out, m[1])
+		}
+	}
+	sort.Strings(out)
+	return dedupe(out)
+}
+
+// NewFailures returns the tests that fail after a change and did not fail
+// before it.
+//
+// This is what makes an imperfect container usable. Ours will never match a
+// maintainer's CI exactly -- on linux/arm64 a plain `pip install torch`
+// resolves to a CUDA build whose CPU linear algebra returns NaN, and kornia's
+// homography tests fail on an unmodified checkout because of it. Without a
+// baseline every one of those is attributed to the patch, and the loop sets
+// about fixing code that was already correct. With one, only the difference
+// counts.
+func NewFailures(before, after []Result) []string {
+	was := map[string]bool{}
+	for _, r := range before {
+		for _, t := range FailingTests(r.Output) {
+			was[t] = true
+		}
+	}
+	var out []string
+	for _, r := range after {
+		for _, t := range FailingTests(r.Output) {
+			if !was[t] {
+				out = append(out, t)
+			}
+		}
+	}
+	sort.Strings(out)
+	return dedupe(out)
+}
+
+// PreexistingFailures are the tests already red before the change. They belong
+// in the digest -- each one is either a recipe to fix or a known difference
+// from the maintainer's environment -- and never in a patch prompt.
+func PreexistingFailures(before []Result) []string {
+	var out []string
+	for _, r := range before {
+		out = append(out, FailingTests(r.Output)...)
+	}
+	sort.Strings(out)
+	return dedupe(out)
+}
+
+func dedupe(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }
 
 // Install runs a recipe's install steps. It must be given a session with the
