@@ -9,3 +9,4 @@ logs/
 bin/pipeline
 config/ntfy-topic.txt
 config/ntfy-cmd-topic.txt
+/pipeline
