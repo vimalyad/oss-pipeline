@@ -1,0 +1,37 @@
+# Hand-written container recipes, for repositories whose own CI does not say
+# enough for internal/recipe to derive one.
+#
+# This file exists because the resolver refuses to guess. When it returns
+# ErrNoRecipe or ErrIncomplete it also reports exactly what it could and could
+# not read, and that report is the input to an entry here. An entry is only
+# worth adding after it has been built and run -- an unverified override is the
+# same guess the resolver declined to make, just written down.
+#
+#   base_image    required. No Alpine: musl breaks manylinux wheels and cgo in
+#                 ways that look like the patch is at fault.
+#   install       runs once per clone with the network on.
+#   test          runs with the network off. That run is the oracle.
+#   mask_volumes  clone-relative paths given a named volume, so build output
+#                 never lands in the bind-mounted checkout.
+
+repos:
+  # Derived recipe reaches ubuntu:24.04 and pixi, and then stops: every command
+  # kornia's workflow runs is built from a step output computed from a
+  # JSON-encoded matrix value (`pixi run -e ${{ steps.pixi-env.outputs.name }}
+  # ...`), which is not resolvable without evaluating GitHub's expression
+  # language. pip reaches the same dependency set without pixi's environment
+  # indirection.
+  kornia/kornia:
+    base_image: python:3.11-bookworm
+    platform: linux/arm64
+    install:
+      - pip install --upgrade pip
+      - pip install -e .
+      - pip install pytest pytest-timeout
+    test:
+      - pytest -q tests/
+    lint:
+      - ruff check kornia
+    mask_volumes:
+      - .venv
+      - .pytest_cache

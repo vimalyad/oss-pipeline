@@ -20,6 +20,17 @@ func spec() Spec {
 
 func flagString(s Spec) string { return strings.Join(dockerFlags(s), " ") }
 
+// flagValue returns the argument that follows name, so a test can assert on
+// the value itself rather than on a substring of the whole command line.
+func flagValue(args []string, name string) string {
+	for i, a := range args {
+		if a == name && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
 // TestFlagsCarryNoCredential is the security property this package exists for.
 // The host environment is never passed through, so a credential in the shell
 // cannot reach a target repository's build.
@@ -75,20 +86,28 @@ func TestHardeningFlagsArePresent(t *testing.T) {
 	}
 }
 
-// /tmp must be nosuid but NOT noexec: Go and cargo execute test binaries out
-// of /tmp, and noexec breaks them in a way that reads like a broken patch.
-func TestTmpfsIsExecutable(t *testing.T) {
-	got := flagString(spec())
-	if !strings.Contains(got, "/tmp:rw,nosuid,size=") {
+// /tmp must be nosuid but NOT noexec: Go and cargo link test binaries into
+// /tmp and execute them from there.
+//
+// The flag assertion alone is not enough, and this test used to make only that
+// assertion. Docker applies noexec to every --tmpfs by default no matter what
+// options are passed, so a flag string that merely lacks the word "noexec"
+// still produces a noexec mount. The unit test passed while every `go test`
+// in the sandbox failed with "permission denied". TestTmpfsActuallyExecutes
+// below is the one that can tell.
+func TestTmpfsFlagRequestsExec(t *testing.T) {
+	got := flagValue(dockerFlags(Spec{Limits: DefaultLimits()}), "--tmpfs")
+	if !strings.HasPrefix(got, "/tmp:") || !strings.Contains(got, "nosuid") {
 		t.Fatalf("tmpfs flag wrong: %s", got)
+	}
+	if !strings.Contains(got, ",exec") {
+		t.Fatal("docker defaults --tmpfs to noexec; `exec` must be requested explicitly")
 	}
 	if strings.Contains(got, "noexec") {
 		t.Fatal("noexec on /tmp breaks go and cargo test binaries")
 	}
 }
 
-// Everything is labelled so pruning can never touch the unrelated Docker
-// objects already on this machine.
 func TestEverythingIsLabelled(t *testing.T) {
 	if !strings.Contains(flagString(spec()), "--label ossp.managed=1") {
 		t.Fatal("unlabelled objects cannot be pruned safely")
@@ -224,5 +243,139 @@ func TestIntegrationTimeoutKillsTheProcess(t *testing.T) {
 	}
 	if !res.TimedOut {
 		t.Fatal("a command past its timeout must be reported as timed out")
+	}
+}
+
+// TestIntegrationTmpfsActuallyExecutes is the test that can tell, and the one
+// that was missing.
+//
+// The unit test above only reads the flag we pass. Docker applies noexec to
+// every --tmpfs by default no matter what options are given, so a flag string
+// that lacks the word "noexec" still produced a noexec /tmp. This compiles a
+// binary into /tmp and runs it, which is exactly what `go test` does for every
+// package, and is the only way to observe the difference from outside.
+func TestIntegrationTmpfsActuallyExecutes(t *testing.T) {
+	dockerAvailable(t)
+	s, err := Start(context.Background(), Spec{
+		Image: "ossp-gate:test", Clone: t.TempDir(), Limits: DefaultLimits(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	res, err := s.Run(context.Background(),
+		`printf '#!/bin/sh\necho ran-from-tmp\n' > /tmp/probe && chmod +x /tmp/probe && /tmp/probe`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK() || !strings.Contains(res.Output, "ran-from-tmp") {
+		t.Fatalf("could not execute from /tmp (code=%d): %s\n"+
+			"a noexec /tmp makes every go and cargo test fail with "+
+			"\"permission denied\", which reads like a broken patch", res.Code, res.Output)
+	}
+}
+
+// TestSanitiseGitConfigRemovesHostPaths covers the clone config the pipeline
+// actually writes. The credential helper is the reason this exists: the
+// container's premise is that it holds no credential, and a config that names
+// the host script which dispenses one contradicts that.
+func TestSanitiseGitConfigRemovesHostPaths(t *testing.T) {
+	clone := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(clone, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Verbatim shape of a clone this pipeline has prepared.
+	cfg := `[core]
+	repositoryformatversion = 0
+	hooksPath = /Users/someone/oss-pipeline/githooks
+[remote "origin"]
+	url = https://github.com/cli/cli.git
+[credential "https://github.com"]
+	helper =
+	helper = /Users/someone/oss-pipeline/bin/gh-token-helper
+[user]
+	name = A Name
+	email = 1234+login@users.noreply.github.com
+`
+	if err := os.WriteFile(filepath.Join(clone, ".git", "config"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := sanitiseGitConfig(clone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	for _, forbidden := range []string{"gh-token-helper", "credential", "hooksPath", "githooks"} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("sanitised config still contains %q:\n%s", forbidden, got)
+		}
+	}
+	// The section after the stripped one must survive: a naive strip that
+	// runs to end-of-file would silently drop the remote and the identity.
+	for _, want := range []string{"[user]", "noreply.github.com", "[remote \"origin\"]", "cli/cli.git"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("sanitised config lost %q:\n%s", want, got)
+		}
+	}
+	if filepath.Dir(out) != filepath.Join(clone, ".git") {
+		t.Errorf("sanitised config written outside the clone's .git: %s", out)
+	}
+}
+
+func TestSanitiseGitConfigOnANonClone(t *testing.T) {
+	// A plain directory, and a .git file rather than a directory (a worktree
+	// or submodule), must both be a no-op rather than an error.
+	p, err := sanitiseGitConfig(t.TempDir())
+	if err != nil || p != "" {
+		t.Fatalf("plain dir: %q, %v", p, err)
+	}
+	clone := t.TempDir()
+	if err := os.WriteFile(filepath.Join(clone, ".git"), []byte("gitdir: ../x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := sanitiseGitConfig(clone); err != nil || p != "" {
+		t.Fatalf("gitfile: %q, %v", p, err)
+	}
+}
+
+// TestIntegrationCloneConfigHasNoHostPathsInside is the end-to-end form of the
+// test above, run against a real prepared clone if one is present. The unit
+// test proves the filter; this proves the mount is actually wired and that
+// git inside the container agrees.
+func TestIntegrationCloneConfigHasNoHostPathsInside(t *testing.T) {
+	dockerAvailable(t)
+	clone := os.Getenv("OSSP_TEST_CLONE")
+	if clone == "" {
+		t.Skip("set OSSP_TEST_CLONE to a prepared clone")
+	}
+	s, err := Start(context.Background(), Spec{
+		Image: "ossp-gate:test", Clone: clone, Limits: DefaultLimits(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	res, err := s.Run(context.Background(), "git config --list 2>/dev/null | grep -i 'credential\\|hookspath' || echo CLEAN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Output, "CLEAN") {
+		t.Fatalf("container can see host git settings:\n%s", res.Output)
+	}
+
+	// And the sanitised file must not outlive the session.
+	stray := filepath.Join(clone, ".git", sandboxConfigName)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stray); !os.IsNotExist(err) {
+		t.Errorf("%s survived Close", stray)
 	}
 }

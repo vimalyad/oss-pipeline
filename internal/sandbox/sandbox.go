@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -76,6 +77,11 @@ type Spec struct {
 	Platform string
 	Labels   map[string]string
 	Limits   Limits
+
+	// gitConfig is a sanitised copy of the clone's .git/config, mounted over
+	// the real one. Set by Start, not by callers, so a caller cannot forget
+	// it and no caller can point it somewhere else.
+	gitConfig string
 }
 
 // Available reports whether the Docker daemon is reachable.
@@ -117,6 +123,12 @@ func Start(ctx context.Context, spec Spec) (*Session, error) {
 	if spec.Limits == (Limits{}) {
 		spec.Limits = DefaultLimits()
 	}
+	cfg, err := sanitiseGitConfig(spec.Clone)
+	if err != nil {
+		return nil, err
+	}
+	spec.gitConfig = cfg
+
 	args := []string{"run", "-d", "--rm=false"}
 	args = append(args, dockerFlags(spec)...)
 	args = append(args, spec.Image, "sleep", "infinity")
@@ -139,18 +151,31 @@ func dockerFlags(spec Spec) []string {
 		"--user", "1000:1000",
 		"--workdir", "/work",
 		"--mount", "type=bind,src=" + spec.Clone + ",dst=/work",
+	}
+	if spec.gitConfig != "" {
+		// Read-only: the container must not be able to write host git config,
+		// and nothing it legitimately does needs to.
+		args = append(args,
+			"--mount", "type=bind,src="+spec.gitConfig+",dst=/work/.git/config,readonly")
+	}
+	args = append(args, []string{
 		// Equal memory and swap disables swap: a runaway build should be
 		// killed rather than thrash the host.
 		"--memory", l.Memory, "--memory-swap", l.Memory,
 		"--cpus", l.CPUs,
 		"--pids-limit", fmt.Sprint(l.PIDs),
-		// nosuid but NOT noexec: Go and cargo execute test binaries out of
-		// /tmp, and noexec breaks them in a way that reads like a broken patch.
-		"--tmpfs", fmt.Sprintf("/tmp:rw,nosuid,size=%dm", l.TmpfsMB),
+		// `exec` is not redundant. Docker applies rw,noexec,nosuid,nodev to
+		// every --tmpfs regardless of the options given, so omitting it
+		// leaves /tmp mounted noexec -- and Go and cargo both link test
+		// binaries into /tmp and run them from there. The symptom is
+		// "fork/exec /tmp/go-build.../pkg.test: permission denied" on every
+		// package, which reads like a broken patch rather than a broken
+		// mount. nosuid stays.
+		"--tmpfs", fmt.Sprintf("/tmp:rw,exec,nosuid,size=%dm", l.TmpfsMB),
 		"--security-opt", "no-new-privileges",
 		"--cap-drop", "ALL",
 		"--stop-timeout", "5",
-	}
+	}...)
 	if !spec.Network {
 		args = append(args, "--network", "none")
 	}
@@ -225,6 +250,11 @@ func (s *Session) Close() error {
 		return nil
 	}
 	s.closed = true
+	if s.Spec.gitConfig != "" {
+		// Removed even if the container teardown below fails: leaving a
+		// stray file in someone's .git directory is our mess, not Docker's.
+		_ = os.Remove(s.Spec.gitConfig)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return exec.CommandContext(ctx, "docker", "rm", "-f", s.ID).Run()
