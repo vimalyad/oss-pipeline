@@ -29,8 +29,15 @@ const (
 // OpenStatuses are the states in which GitHub, not this pipeline, owns the
 // outcome. Every one of them must be able to reach both terminal results --
 // see the invariant enforced in TestEveryLiveStatusReachesTerminal.
+//
+// StatusStale belongs here and was missing from v1's equivalent set. Nothing
+// in v1 ever assigned it, so the omission was latent; watch now does, and a
+// stale pull request is still open on GitHub. Leaving it out would have let a
+// stale PR escape the open-PR cap -- the pipeline would believe it had room
+// for another and maintainers would see more open PRs than the cap allows --
+// and would have undercounted the ledger's open column.
 var OpenStatuses = []Status{
-	StatusPushed, StatusPROpen, StatusChangesRequested, StatusUpdating,
+	StatusPushed, StatusPROpen, StatusChangesRequested, StatusUpdating, StatusStale,
 }
 
 // Transitions is the whole state machine, written out rather than derived.
