@@ -156,3 +156,22 @@ func TestTargetable(t *testing.T) {
 		}
 	}
 }
+
+// TestAnApprovalCanBeWithdrawn: a person may change their mind before
+// implementation starts, and `pipeline exclude` must be able to drop what is
+// already queued. v1 had no such edge and swallowed the error, so excluding a
+// repository left its approved candidates to run on the next cycle.
+func TestAnApprovalCanBeWithdrawn(t *testing.T) {
+	for _, from := range []Status{StatusProposed, StatusApproved, StatusAutoApproved} {
+		if !Transitions[from][StatusRejected] {
+			t.Errorf("%s cannot be rejected, so exclude cannot drop it", from)
+		}
+	}
+	// Withdrawal must not be possible once work has started or shipped:
+	// those need abandon or the real outcome, not a quiet rejection.
+	for _, from := range []Status{StatusImplementing, StatusPROpen, StatusMerged, StatusClosed} {
+		if Transitions[from][StatusRejected] {
+			t.Errorf("%s can be rejected, which would hide a real outcome", from)
+		}
+	}
+}

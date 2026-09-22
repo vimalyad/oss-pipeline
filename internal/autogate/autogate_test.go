@@ -249,25 +249,40 @@ func TestApproveWritesTheLabelledStatus(t *testing.T) {
 // TestOnlyAutogateWritesAutoApproved is the claim that makes every pull
 // request attributable. It reads the source rather than trusting a convention,
 // because a convention is exactly what fails silently.
+//
+// It looks for *writes*, not mentions: passing the constant to
+// model.Transition, or assigning it to a field. Reading it -- a switch that
+// decides which queued candidates `exclude` should drop, say -- is ordinary
+// and must stay allowed, or the rule would push other packages into comparing
+// raw strings, which is worse in every way.
 func TestOnlyAutogateWritesAutoApproved(t *testing.T) {
-	root := "../.."
 	fset := token.NewFileSet()
 	var offenders []string
 
-	err := filepath.Walk(filepath.Join(root, "internal"), func(path string, info os.FileInfo, err error) error {
+	isAutoApproved := func(e ast.Expr) bool {
+		sel, ok := e.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "StatusAutoApproved" {
+			return false
+		}
+		id, ok := sel.X.(*ast.Ident)
+		return ok && id.Name == "model"
+	}
+	note := func(path string, pos token.Pos, what string) {
+		offenders = append(offenders,
+			fmt.Sprintf("%s:%d (%s)", path, fset.Position(pos).Line, what))
+	}
+
+	err := filepath.Walk(filepath.Join("..", ".."), func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") {
 			return err
 		}
 		if strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		// This package is the one place allowed to write it.
-		if strings.Contains(filepath.ToSlash(path), "internal/autogate/") {
-			return nil
-		}
-		// The model declares the constant and the table; it does not assign it
-		// to a candidate.
-		if strings.Contains(filepath.ToSlash(path), "internal/model/") {
+		slash := filepath.ToSlash(path)
+		// autogate is the one place allowed to write it; model declares the
+		// constant and the table without ever assigning it to a candidate.
+		if strings.Contains(slash, "internal/autogate/") || strings.Contains(slash, "internal/model/") {
 			return nil
 		}
 		f, perr := parser.ParseFile(fset, path, nil, 0)
@@ -275,12 +290,26 @@ func TestOnlyAutogateWritesAutoApproved(t *testing.T) {
 			return nil
 		}
 		ast.Inspect(f, func(n ast.Node) bool {
-			sel, ok := n.(*ast.SelectorExpr)
-			if !ok || sel.Sel.Name != "StatusAutoApproved" {
-				return true
-			}
-			if id, ok := sel.X.(*ast.Ident); ok && id.Name == "model" {
-				offenders = append(offenders, fmt.Sprintf("%s:%d", path, fset.Position(sel.Pos()).Line))
+			switch t := n.(type) {
+			case *ast.CallExpr:
+				sel, ok := t.Fun.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				if sel.Sel.Name != "Transition" && sel.Sel.Name != "Reopen" {
+					return true
+				}
+				for _, a := range t.Args {
+					if isAutoApproved(a) {
+						note(path, a.Pos(), "transition target")
+					}
+				}
+			case *ast.AssignStmt:
+				for _, r := range t.Rhs {
+					if isAutoApproved(r) {
+						note(path, r.Pos(), "assignment")
+					}
+				}
 			}
 			return true
 		})
@@ -290,7 +319,7 @@ func TestOnlyAutogateWritesAutoApproved(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(offenders) > 0 {
-		t.Fatalf("model.StatusAutoApproved is referenced outside internal/autogate:\n  %s\n"+
+		t.Fatalf("model.StatusAutoApproved is written outside internal/autogate:\n  %s\n"+
 			"every PR must be attributable to a human approval or to autogate",
 			strings.Join(offenders, "\n  "))
 	}

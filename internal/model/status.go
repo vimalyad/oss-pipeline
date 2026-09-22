@@ -60,7 +60,13 @@ var Transitions = map[Status]map[Status]bool{
 	StatusDiscovered: set(StatusScored, StatusRejected),
 	StatusScored:     set(StatusProposed, StatusRejected),
 	StatusProposed:   set(StatusApproved, StatusAutoApproved, StatusRejected),
-	StatusApproved:   set(StatusImplementing, StatusAbandoned),
+	// Rejected is reachable from Approved because a person may change their
+	// mind, and because `pipeline exclude` has to be able to drop what is
+	// already queued. v1 lacked this edge and swallowed the resulting error,
+	// so excluding a repository left its approved candidates in place to be
+	// implemented on the next cycle -- the opposite of what the command is
+	// for.
+	StatusApproved: set(StatusImplementing, StatusAbandoned, StatusRejected),
 	// The autonomous path is a separate, labelled edge rather than a
 	// weakened gate. It reaches the same place, so nothing downstream has to
 	// know which it was; the difference is that the audit log always does.
