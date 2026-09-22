@@ -9,10 +9,16 @@ import "fmt"
 type Status string
 
 const (
-	StatusDiscovered       Status = "discovered"
-	StatusScored           Status = "scored"
-	StatusProposed         Status = "proposed"
-	StatusApproved         Status = "approved"
+	StatusDiscovered Status = "discovered"
+	StatusScored     Status = "scored"
+	StatusProposed   Status = "proposed"
+	StatusApproved   Status = "approved"
+	// StatusAutoApproved is approval granted by internal/autogate rather than
+	// by a person. It is a separate status, not a flag on StatusApproved, so
+	// every pull request this pipeline opens is attributable to one or the
+	// other from the audit log alone -- and so a bug that reached the
+	// autonomous path could never be mistaken for a human decision.
+	StatusAutoApproved     Status = "auto_approved"
 	StatusRejected         Status = "rejected"
 	StatusImplementing     Status = "implementing"
 	StatusImplemented      Status = "implemented"
@@ -42,14 +48,23 @@ var OpenStatuses = []Status{
 
 // Transitions is the whole state machine, written out rather than derived.
 //
-// The human gate is structural: there is deliberately no edge from Scored or
-// Proposed to Implementing, so an unattended run cannot reach Implementing
-// without a human having moved the candidate to Approved.
+// The human gate is structural: there is deliberately no edge from Discovered,
+// Scored or Proposed to Implementing, so no unattended run reaches
+// Implementing by drifting through the table.
+//
+// Exactly two statuses reach Implementing, and that is the point. Approved is
+// written only by a person; AutoApproved is written only by internal/autogate,
+// which a source test enforces. Whichever way a pull request was authorised,
+// the audit log says so, and neither can be mistaken for the other.
 var Transitions = map[Status]map[Status]bool{
-	StatusDiscovered:   set(StatusScored, StatusRejected),
-	StatusScored:       set(StatusProposed, StatusRejected),
-	StatusProposed:     set(StatusApproved, StatusRejected),
-	StatusApproved:     set(StatusImplementing, StatusAbandoned),
+	StatusDiscovered: set(StatusScored, StatusRejected),
+	StatusScored:     set(StatusProposed, StatusRejected),
+	StatusProposed:   set(StatusApproved, StatusAutoApproved, StatusRejected),
+	StatusApproved:   set(StatusImplementing, StatusAbandoned),
+	// The autonomous path is a separate, labelled edge rather than a
+	// weakened gate. It reaches the same place, so nothing downstream has to
+	// know which it was; the difference is that the audit log always does.
+	StatusAutoApproved: set(StatusImplementing, StatusAbandoned, StatusRejected),
 	StatusImplementing: set(StatusImplemented, StatusAbandoned),
 	StatusImplemented:  set(StatusPushed, StatusAbandoned),
 

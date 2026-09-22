@@ -26,13 +26,20 @@ func TestEveryLiveStatusReachesTerminal(t *testing.T) {
 	}
 }
 
-// TestHumanGateIsStructurallyUnreachable: an unattended run must not be able
-// to reach Implementing without a human having approved. This is a property
-// of the table, not of a flag, so no amount of --execute can bypass it.
+// TestHumanGateIsStructurallyUnreachable: no run reaches Implementing by
+// drifting through the table. This is a property of the table, not of a flag,
+// so no amount of --execute can bypass it.
+//
+// Exactly two statuses reach Implementing. Approved is written only by a
+// person; AutoApproved only by internal/autogate, which
+// TestOnlyAutogateWritesAutoApproved enforces against the source. Adding the
+// autonomous path as its own labelled edge rather than as a second way into
+// Approved is what keeps every pull request attributable to one or the other
+// from the audit log alone.
 func TestHumanGateIsStructurallyUnreachable(t *testing.T) {
 	for _, from := range []Status{StatusDiscovered, StatusScored, StatusProposed} {
 		if Transitions[from][StatusImplementing] {
-			t.Errorf("%s reaches Implementing without human approval", from)
+			t.Errorf("%s reaches Implementing without an approval step", from)
 		}
 	}
 	var inbound []Status
@@ -41,8 +48,38 @@ func TestHumanGateIsStructurallyUnreachable(t *testing.T) {
 			inbound = append(inbound, s)
 		}
 	}
-	if len(inbound) != 1 || inbound[0] != StatusApproved {
-		t.Fatalf("Implementing reachable from %v; want only [approved]", inbound)
+	sortStatuses(inbound)
+	want := []Status{StatusApproved, StatusAutoApproved}
+	if len(inbound) != len(want) || inbound[0] != want[0] || inbound[1] != want[1] {
+		t.Fatalf("Implementing reachable from %v; want exactly %v", inbound, want)
+	}
+}
+
+// TestAutoApprovedHasExactlyOneWayIn: an autonomous approval must come from a
+// scored, proposed candidate and from nowhere else. A second inbound edge
+// would be a route into the autonomous path that skips the scoring the
+// autonomy guardrails are built on top of.
+func TestAutoApprovedHasExactlyOneWayIn(t *testing.T) {
+	var inbound []Status
+	for s, outs := range Transitions {
+		if outs[StatusAutoApproved] {
+			inbound = append(inbound, s)
+		}
+	}
+	if len(inbound) != 1 || inbound[0] != StatusProposed {
+		t.Fatalf("AutoApproved reachable from %v; want only [proposed]", inbound)
+	}
+	// And it must never be a way to launder a human rejection.
+	if Transitions[StatusRejected][StatusAutoApproved] {
+		t.Error("a rejected candidate can be auto-approved")
+	}
+}
+
+func sortStatuses(ss []Status) {
+	for i := 1; i < len(ss); i++ {
+		for j := i; j > 0 && ss[j] < ss[j-1]; j-- {
+			ss[j], ss[j-1] = ss[j-1], ss[j]
+		}
 	}
 }
 
