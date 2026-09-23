@@ -27,6 +27,8 @@ import (
 
 	"github.com/vimalyad/osspipeline/internal/llm"
 	"github.com/vimalyad/osspipeline/internal/model"
+
+	"github.com/vimalyad/osspipeline/internal/text"
 )
 
 //go:embed prompts/ai_policy.md
@@ -136,7 +138,7 @@ func Fetch(ctx context.Context, api API, j Judge, c Cache, repo string, o Option
 	docs, hasContributing := readPolicyDocs(ctx, api, repo)
 	blob := strings.Join(docs, "\n\n")
 	if len(blob) > o.MaxDocBytes {
-		blob = blob[:o.MaxDocBytes]
+		blob = text.Clip(blob, o.MaxDocBytes)
 	}
 
 	f := &model.RepoFacts{

@@ -25,6 +25,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/vimalyad/osspipeline/internal/text"
 )
 
 // ErrLLM is any failure to get a usable answer.
@@ -96,7 +98,7 @@ func (c *Client) Judge(ctx context.Context, prompt string) (string, error) {
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("%w: timed out after %s", ErrLLM, timeout)
 		}
-		return "", fmt.Errorf("%w: %v: %s", ErrLLM, err, trim(errOut, 300))
+		return "", fmt.Errorf("%w: %v: %s", ErrLLM, err, text.Ellipsis(errOut, 300))
 	}
 	return strings.TrimSpace(out), nil
 }
@@ -140,7 +142,7 @@ func ExtractJSON(s string) (string, error) {
 	}
 	start := strings.IndexAny(s, "{[")
 	if start < 0 {
-		return "", fmt.Errorf("%w: no JSON in answer: %s", ErrLLM, trim(s, 200))
+		return "", fmt.Errorf("%w: no JSON in answer: %s", ErrLLM, text.Ellipsis(s, 200))
 	}
 	open := s[start]
 	close := byte('}')
@@ -168,7 +170,7 @@ func ExtractJSON(s string) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("%w: unterminated JSON in answer: %s", ErrLLM, trim(s, 200))
+	return "", fmt.Errorf("%w: unterminated JSON in answer: %s", ErrLLM, text.Ellipsis(s, 200))
 }
 
 func betweenFences(s string) string {
@@ -184,14 +186,6 @@ func betweenFences(s string) string {
 		return strings.TrimSpace(rest[:j])
 	}
 	return ""
-}
-
-func trim(s string, n int) string {
-	s = strings.TrimSpace(s)
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }
 
 // Render fills a prompt template. Deliberately minimal: {{key}} substitution

@@ -3,6 +3,8 @@ package notify
 import (
 	"fmt"
 	"strings"
+
+	"github.com/vimalyad/osspipeline/internal/text"
 )
 
 // The escalation taxonomy.
@@ -171,7 +173,7 @@ func short(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n]
+	return text.Clip(s, n)
 }
 
 // shortHash is a cheap content key for dedupe. Not security-relevant.

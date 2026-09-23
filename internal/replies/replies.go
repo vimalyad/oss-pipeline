@@ -20,6 +20,8 @@ import (
 	"github.com/vimalyad/osspipeline/internal/guard"
 	"github.com/vimalyad/osspipeline/internal/llm"
 	"github.com/vimalyad/osspipeline/internal/model"
+
+	"github.com/vimalyad/osspipeline/internal/text"
 )
 
 //go:embed prompts/reply.md
@@ -83,8 +85,8 @@ func Draft(ctx context.Context, d Drafter, c *model.Candidate, idx int, rc Conte
 	prompt := llm.Render(replyPrompt, map[string]string{
 		"repo": c.Repo, "pr": fmt.Sprint(pr), "title": c.Title,
 		"commits":  orElse(rc.Commits, "(nothing pushed since)"),
-		"diff":     orElse(truncate(rc.Diff, maxDiff), "(diff unavailable)"),
-		"feedback": truncate(str(item, "body"), maxFeedback),
+		"diff":     orElse(text.Clip(rc.Diff, maxDiff), "(diff unavailable)"),
+		"feedback": text.Clip(str(item, "body"), maxFeedback),
 	})
 
 	text, err := d.Judge(ctx, prompt)
@@ -213,13 +215,6 @@ func fromAny(v any) []string {
 		return []string{t}
 	}
 	return nil
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
 }
 
 func orElse(s, fallback string) string {

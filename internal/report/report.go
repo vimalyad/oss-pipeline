@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/vimalyad/osspipeline/internal/ledger"
+
+	"github.com/vimalyad/osspipeline/internal/text"
 )
 
 // PRView is one open pull request as the page needs it.
@@ -97,7 +99,7 @@ func Render(in Input) string {
 	}
 	for _, pr := range in.Open {
 		if pr.Err != "" {
-			p("- **%s#%d** — could not read: %s", pr.Repo, pr.Number, trim(pr.Err, 80))
+			p("- **%s#%d** — could not read: %s", pr.Repo, pr.Number, text.Clip(pr.Err, 80))
 			p("")
 			continue
 		}
@@ -208,13 +210,6 @@ func first(ss []string, n int) []string {
 		return ss[:n]
 	}
 	return ss
-}
-
-func trim(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
 }
 
 func orElse(s, fallback string) string {

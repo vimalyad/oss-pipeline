@@ -10,6 +10,7 @@ import (
 	"github.com/vimalyad/osspipeline/internal/model"
 	"github.com/vimalyad/osspipeline/internal/policy"
 	"github.com/vimalyad/osspipeline/internal/store"
+	"github.com/vimalyad/osspipeline/internal/text"
 )
 
 // TestLiveRender builds the page from the real state on disk, for comparison
@@ -43,21 +44,21 @@ func TestLiveRender(t *testing.T) {
 	}
 	for _, c := range s.ByStatus(model.StatusProposed) {
 		if len(c.Blockers) > 0 {
-			in.NeedsYou = append(in.NeedsYou, Item{Text: fmt.Sprintf("**%s#%d** — %s", c.Repo, c.Issue, trim(c.Blockers[0], 90))})
+			in.NeedsYou = append(in.NeedsYou, Item{Text: fmt.Sprintf("**%s#%d** — %s", c.Repo, c.Issue, text.Clip(c.Blockers[0], 90))})
 			continue
 		}
 		in.NeedsYou = append(in.NeedsYou, Item{
-			Text: fmt.Sprintf("**%s#%d** %s — approve or reject", c.Repo, c.Issue, trim(c.Title, 58)),
+			Text: fmt.Sprintf("**%s#%d** %s — approve or reject", c.Repo, c.Issue, text.Clip(c.Title, 58)),
 			Cmd:  "pipeline approve " + c.Slug(),
 		})
 	}
 	for _, c := range s.ByStatus(model.StatusApproved) {
 		if len(c.Blockers) > 0 {
-			in.NeedsYou = append(in.NeedsYou, Item{Text: fmt.Sprintf("**%s#%d** — %s", c.Repo, c.Issue, trim(c.Blockers[0], 90))})
+			in.NeedsYou = append(in.NeedsYou, Item{Text: fmt.Sprintf("**%s#%d** — %s", c.Repo, c.Issue, text.Clip(c.Blockers[0], 90))})
 			continue
 		}
 		in.Queued = append(in.Queued, Item{
-			Text: fmt.Sprintf("**%s#%d** %s", c.Repo, c.Issue, trim(c.Title, 52)),
+			Text: fmt.Sprintf("**%s#%d** %s", c.Repo, c.Issue, text.Clip(c.Title, 52)),
 			Cmd:  "will run on the next scheduled cycle",
 		})
 	}
