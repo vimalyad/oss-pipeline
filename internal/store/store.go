@@ -145,3 +145,28 @@ func (s *Store) LoadRepoFacts(repo string) (*model.RepoFacts, error) {
 	}
 	return &f, nil
 }
+
+// SaveRepoFacts writes the weekly repository cache.
+//
+// Written whole and atomically, like candidates: a torn facts file is loaded
+// on the next run as an unparseable cache, which silently refetches every
+// repository and burns the API budget a weekly cache exists to protect.
+func (s *Store) SaveRepoFacts(f *model.RepoFacts) error {
+	if f == nil || f.Repo == "" {
+		return fmt.Errorf("store: facts with no repo")
+	}
+	if err := os.MkdirAll(s.reposDir(), 0o755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		return err
+	}
+	name := strings.ReplaceAll(f.Repo, "/", "__") + ".json"
+	final := filepath.Join(s.reposDir(), name)
+	tmp := final + ".tmp"
+	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, final)
+}

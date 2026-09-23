@@ -10,6 +10,7 @@ import (
 	"github.com/vimalyad/osspipeline/internal/publish"
 	"github.com/vimalyad/osspipeline/internal/recipe"
 	"github.com/vimalyad/osspipeline/internal/replies"
+	"github.com/vimalyad/osspipeline/internal/repofacts"
 	"github.com/vimalyad/osspipeline/internal/sandbox"
 	"github.com/vimalyad/osspipeline/internal/store"
 	"github.com/vimalyad/osspipeline/internal/toolchain"
@@ -35,6 +36,8 @@ var (
 	_ replies.Drafter       = (*llm.Client)(nil)
 	_ publish.API           = (*ghx.Client)(nil)
 	_ cilog.API             = cilogAPI{}
+	_ repofacts.API         = plainGet{}
+	_ repofacts.Cache       = (*store.Store)(nil)
 	_ recipe.Commands       = recipe.CommandsFunc(nil)
 	_ replies.Commenter     = prCommenter{}
 )
@@ -51,6 +54,19 @@ func (a cilogAPI) REST(ctx context.Context, path string, o cilog.RESTOptions) (s
 	return a.c.REST(ctx, path, ghx.RESTOptions{
 		Method: o.Method, Paginate: o.Paginate, JQ: o.JQ, Fields: o.Fields,
 	})
+}
+
+// plainGet narrows the client to the two calls repofacts makes. The package
+// states what it needs rather than importing the client, which is what lets it
+// be tested against a map of canned responses instead of GitHub.
+type plainGet struct{ c *ghx.Client }
+
+func (p plainGet) Get(ctx context.Context, path string) (string, error) {
+	return p.c.REST(ctx, path, ghx.RESTOptions{})
+}
+
+func (p plainGet) GraphQL(ctx context.Context, q string, vars map[string]any, v any) error {
+	return p.c.GraphQL(ctx, q, vars, v)
 }
 
 // prCommenter posts a comment on a pull request.

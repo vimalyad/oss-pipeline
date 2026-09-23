@@ -38,16 +38,21 @@ type Brief struct {
 // RepoFacts are repo-level gates, cached because they change slowly and cost
 // API calls (and, for the policy fields, an LLM adjudication).
 type RepoFacts struct {
-	Repo                 string   `json:"repo"`
-	Stars                int      `json:"stars"`
-	HasContributing      bool     `json:"has_contributing"`
-	BansAIPRs            bool     `json:"bans_ai_prs"`
-	RequiresAIDisclosure bool     `json:"requires_ai_disclosure"`
-	AIPolicyQuote        string   `json:"ai_policy_quote"`
-	RequiresDCO          bool     `json:"requires_dco"`
-	RequiresCLA          bool     `json:"requires_cla"`
-	HasTests             bool     `json:"has_tests"`
-	PrimaryLanguage      string   `json:"primary_language"`
+	Repo                 string `json:"repo"`
+	Stars                int    `json:"stars"`
+	HasContributing      bool   `json:"has_contributing"`
+	BansAIPRs            bool   `json:"bans_ai_prs"`
+	RequiresAIDisclosure bool   `json:"requires_ai_disclosure"`
+	AIPolicyQuote        string `json:"ai_policy_quote"`
+	RequiresDCO          bool   `json:"requires_dco"`
+	RequiresCLA          bool   `json:"requires_cla"`
+	HasTests             bool   `json:"has_tests"`
+	PrimaryLanguage      string `json:"primary_language"`
+	// Topics is the axis GitHub actually indexes, and the axis domains are
+	// expressed in. v1 fetched it with the rest of the repository metadata
+	// and discarded it, so every domain match had to be inferred from the
+	// language and the name.
+	Topics               []string `json:"topics"`
 	MergedFirstTimePR90d bool     `json:"merged_first_time_pr_90d"`
 	RequiredIssueLabels  []string `json:"required_issue_labels"`
 	ForbiddenIssueLabels []string `json:"forbidden_issue_labels"`
