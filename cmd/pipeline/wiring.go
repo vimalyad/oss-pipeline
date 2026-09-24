@@ -35,6 +35,7 @@ var (
 	_ watch.CheckClassifier = (*cilog.Fetcher)(nil)
 	_ watch.Saver           = (*store.Store)(nil)
 	_ replies.Drafter       = (*llm.Client)(nil)
+	_ brief.Judge           = (*llm.Client)(nil)
 	_ publish.API           = (*ghx.Client)(nil)
 	_ cilog.API             = cilogAPI{}
 	_ repofacts.API         = plainGet{}
