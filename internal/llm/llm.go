@@ -196,3 +196,38 @@ func Render(tmpl string, vars map[string]string) string {
 	}
 	return tmpl
 }
+
+// JudgeWith is Judge with the payload on stdin and an extra system prompt.
+//
+// The payload goes on stdin rather than into the prompt for two reasons. An
+// issue thread runs to tens of kilobytes and argv is not the place for it; and
+// keeping the instructions and the untrusted text in separate channels makes
+// the boundary between them explicit rather than a matter of formatting. The
+// tools stay disabled for the same reason they are in Judge: the text is
+// third-party, and anything in it that reads like an instruction must not be
+// able to reach a file or a shell.
+func (c *Client) JudgeWith(ctx context.Context, prompt, system, stdin string) (string, error) {
+	timeout := c.Timeout
+	if timeout == 0 {
+		timeout = DefaultTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	args := []string{
+		"-p", prompt,
+		"--model", ModelJudge,
+		"--disallowed-tools", "Read", "Write", "Edit", "Bash", "WebFetch", "WebSearch",
+	}
+	if system != "" {
+		args = append(args, "--append-system-prompt", system)
+	}
+	out, errOut, err := c.exec(ctx, args, stdin, c.Env)
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("%w: timed out after %s", ErrLLM, timeout)
+		}
+		return "", fmt.Errorf("%w: %v: %s", ErrLLM, err, text.Ellipsis(errOut, 300))
+	}
+	return strings.TrimSpace(out), nil
+}

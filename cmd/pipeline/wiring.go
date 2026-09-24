@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/vimalyad/osspipeline/internal/brief"
 	"github.com/vimalyad/osspipeline/internal/cilog"
 	"github.com/vimalyad/osspipeline/internal/ghx"
 	"github.com/vimalyad/osspipeline/internal/llm"
