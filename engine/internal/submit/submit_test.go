@@ -529,26 +529,34 @@ func TestOnlySubmitPublishes(t *testing.T) {
 				if !ok {
 					return true
 				}
-				var literals []string
-				for _, a := range call.Args {
-					if lit, ok := a.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-						literals = append(literals, strings.Trim(lit.Value, `"`))
-					}
-				}
-				joined := strings.Join(literals, " ")
-				// A bare "push" argument to any call, or the gh pr-create pair.
+				// Recursively, because the arguments that matter are almost
+				// never direct. gh is called as
+				// RESTRaw(ctx, []string{"pr","create",...}, "") and the
+				// strings live inside the slice literal -- so a scan that
+				// looked only at call.Args collected nothing and the
+				// pull-request rule had never once fired.
+				literals := stringLiterals(call.Args)
+				// A branch push, or the gh pr-create pair.
 				//
-				// Recording that a push happened is not performing one, and
-				// the audit log is required to name the act it is recording.
-				// The exemption is by callee, not by string, so writing the
-				// word "push" anywhere else is still caught.
-				for _, l := range literals {
-					if l == "push" && !isRecordCall(call) {
-						offenders[slash] = append(offenders[slash],
-							fmt.Sprintf("line %d: pushes a branch", fset.Position(call.Pos()).Line))
-					}
+				// "push" alone is too loose now that the scan descends into
+				// slice literals: `git stash push`, which holds the source
+				// aside during the fails-first check, publishes nothing. A
+				// push that reaches a maintainer names a destination, so that
+				// is what the rule looks for.
+				//
+				// Recording that a push happened is not performing one
+				// either, and the audit log has to be able to name the act it
+				// records. That exemption is by callee rather than by string,
+				// so the word "push" anywhere else is still caught.
+				if looksLikeBranchPush(literals) && !isRecordCall(call) {
+					offenders[slash] = append(offenders[slash],
+						fmt.Sprintf("line %d: pushes a branch", fset.Position(call.Pos()).Line))
 				}
-				if strings.Contains(joined, "pr") && strings.Contains(joined, "create") {
+				// `pr` and `create` as whole arguments, the way gh takes
+				// them -- not as substrings of one string. A SQL statement
+				// naming linked_prs and issue_created_at contains both and
+				// opens nothing, and this scan flagged exactly that.
+				if hasArg(literals, "pr") && hasArg(literals, "create") {
 					offenders[slash] = append(offenders[slash],
 						fmt.Sprintf("line %d: opens a pull request", fset.Position(call.Pos()).Line))
 				}
@@ -664,4 +672,53 @@ func TestCreditDoesNotClaimCommitsWeNeverTook(t *testing.T) {
 func isRecordCall(call *ast.CallExpr) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	return ok && sel.Sel.Name == "Record"
+}
+
+// hasArg reports whether one of the call's string literals is exactly want.
+func hasArg(literals []string, want string) bool {
+	for _, l := range literals {
+		if l == want {
+			return true
+		}
+	}
+	return false
+}
+
+// stringLiterals collects every string constant reachable from these
+// expressions, descending into slice and struct literals.
+func stringLiterals(exprs []ast.Expr) []string {
+	var out []string
+	for _, e := range exprs {
+		ast.Inspect(e, func(n ast.Node) bool {
+			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				out = append(out, strings.Trim(lit.Value, `"`))
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// looksLikeBranchPush reports whether these arguments send a branch somewhere.
+//
+// `push` with a destination: a remote name, --set-upstream, or a URL. Without
+// one it is `git stash push`, or a word in a sentence.
+func looksLikeBranchPush(literals []string) bool {
+	if !hasArg(literals, "push") {
+		return false
+	}
+	// `git stash push` is a different verb that happens to share a word.
+	if hasArg(literals, "stash") {
+		return false
+	}
+	for _, l := range literals {
+		switch {
+		case l == "fork", l == "origin", l == "upstream",
+			l == "--set-upstream", l == "-u", l == "--force", l == "HEAD":
+			return true
+		case strings.HasPrefix(l, "https://") || strings.HasPrefix(l, "git@"):
+			return true
+		}
+	}
+	return false
 }
