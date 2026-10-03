@@ -1,0 +1,82 @@
+#!/bin/sh
+# Layer 4 guard. Last line of defence before anything becomes public history.
+#
+# Wired via `core.hooksPath` (not copied per-clone) so there is one canonical
+# copy and no drift. Aborts the push unless ALL of the following hold:
+#   1. local user.email / user.name are the OSS identity
+#   2. the push target repo is owned by the OSS login (i.e. our own fork)
+#   3. every commit being pushed is authored AND committed by the OSS identity
+#   4. no commit message being pushed contains AI attribution
+#
+# (3) and (4) are re-checked here because commit-msg can be bypassed with
+# --no-verify, and `npm install` in a JS repo can clobber core.hooksPath.
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+. "$ROOT/config/identity.env"
+# grep -f treats EVERY line as a pattern, comments included -- a bare "#"
+# comment line matches any message containing "Fixes #1". Strip them first.
+PATTERNS_SRC="$ROOT/config/forbidden-trailers.txt"
+PATTERNS=$(mktemp)
+trap 'rm -f "$PATTERNS"' EXIT
+grep -vE '^[[:space:]]*(#|$)' "$PATTERNS_SRC" > "$PATTERNS"
+
+remote_url="${2:-}"
+
+fail() {
+    printf '\n*** PUSH BLOCKED by oss-pipeline pre-push guard ***\n' >&2
+    printf '    %s\n\n' "$1" >&2
+    exit 1
+}
+
+# --- 1. identity ------------------------------------------------------------
+actual_email=$(git config user.email 2>/dev/null || echo '<unset>')
+actual_name=$(git config user.name 2>/dev/null || echo '<unset>')
+
+if [ "$actual_email" != "$OSS_EMAIL" ]; then
+    # Name which known alt account was caught -- all of them share the display
+    # name "Vimal Kumar Yadav", so the email is the only distinguishing detail.
+    set -- $OTHER_LOGINS
+    for alt_email in $OTHER_EMAILS; do
+        alt_login="$1"; shift
+        [ "$actual_email" = "$alt_email" ] \
+            && fail "user.email is the '$alt_login' account. Expected $OSS_EMAIL"
+    done
+    fail "user.email is '$actual_email', expected '$OSS_EMAIL'"
+fi
+[ "$actual_name" = "$OSS_NAME" ] \
+    || fail "user.name is '$actual_name', expected '$OSS_NAME'"
+
+# --- 2. push target must be our own fork ------------------------------------
+case "$remote_url" in
+    *"github.com/$OSS_LOGIN/"*|*"github.com:$OSS_LOGIN/"*) ;;
+    *) fail "push target is not a $OSS_LOGIN fork: '$remote_url'" ;;
+esac
+
+# --- 3 & 4. inspect every commit actually being pushed -----------------------
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -n "${local_sha:-}" ] || continue
+    case "$local_sha" in *[!0]*) ;; *) continue ;; esac   # deleting a ref
+
+    case "$remote_sha" in
+        *[!0]*) range="$remote_sha..$local_sha" ;;
+        *)      range="$local_sha --not --remotes" ;;      # new branch
+    esac
+
+    for sha in $(git rev-list $range 2>/dev/null); do
+        ae=$(git log -1 --format='%ae' "$sha")
+        ce=$(git log -1 --format='%ce' "$sha")
+        [ "$ae" = "$OSS_EMAIL" ] \
+            || fail "commit $sha author is '$ae', expected '$OSS_EMAIL'"
+        [ "$ce" = "$OSS_EMAIL" ] \
+            || fail "commit $sha committer is '$ce', expected '$OSS_EMAIL'"
+
+        if git log -1 --format='%B' "$sha" | grep -qiEf "$PATTERNS"; then
+            hit=$(git log -1 --format='%B' "$sha" | grep -oiEf "$PATTERNS" | head -1)
+            fail "commit $sha message contains AI attribution: '$hit'"
+        fi
+    done
+done
+
+exit 0

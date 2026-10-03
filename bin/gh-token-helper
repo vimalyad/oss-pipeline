@@ -1,0 +1,37 @@
+#!/bin/sh
+# git credential helper: serves the vimalyad PAT from the macOS Keychain.
+#
+# Wired per-clone (see identity.py harden_clone) AFTER clearing the inherited
+# global `gh auth git-credential` helper, so a pipeline clone can never
+# authenticate as the work account. The token is never written to disk.
+#
+# Only answers `get`, only for https://github.com. store/erase are no-ops.
+set -eu
+
+[ "${1:-}" = "get" ] || exit 0
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/../config/identity.env"
+
+protocol=""; host=""
+while IFS= read -r line; do
+    case "$line" in
+        protocol=*) protocol="${line#protocol=}" ;;
+        host=*)     host="${line#host=}" ;;
+        "")         break ;;
+    esac
+done
+
+# Refuse to offer credentials to anything but GitHub over TLS.
+[ "$protocol" = "https" ] || exit 0
+[ "$host" = "github.com" ] || exit 0
+
+if ! token=$(security find-generic-password \
+        -a "$OSS_KEYCHAIN_ACCOUNT" -s "$OSS_KEYCHAIN_SERVICE" -w 2>/dev/null); then
+    echo "gh-token-helper: no Keychain item ${OSS_KEYCHAIN_SERVICE}/${OSS_KEYCHAIN_ACCOUNT}." >&2
+    echo "  Create it with: security add-generic-password -a ${OSS_KEYCHAIN_ACCOUNT} -s ${OSS_KEYCHAIN_SERVICE} -w" >&2
+    exit 1
+fi
+
+printf 'username=%s\n' "$OSS_LOGIN"
+printf 'password=%s\n' "$token"

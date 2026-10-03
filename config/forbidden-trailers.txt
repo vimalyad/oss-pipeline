@@ -1,0 +1,14 @@
+# Extended regexes (grep -iEf) that BLOCK a commit message.
+# Purpose: prevent AI *attribution* in public git history.
+#
+# Deliberately precise, not brand-blocking: a commit touching the Anthropic
+# SDK legitimately says "anthropic", and a repo may have a file named
+# claude.py. Bare brand mentions are fine; attribution constructs are not.
+^[[:space:]]*co-authored-by:.*(claude|anthropic|copilot|cursor|chatgpt|gpt-|codex|devin)
+^[[:space:]]*(signed-off-by|assisted-by|generated-by):.*(claude|anthropic|copilot|cursor|chatgpt)
+generated (with|by) [[]?(claude|anthropic|chatgpt|gpt|copilot|cursor|ai[[:space:]])
+(written|authored|created|implemented) (with|by) (claude|anthropic|chatgpt|copilot|cursor|an ai|ai[[:space:]])
+(assisted|generated) by (an )?(ai|llm)[[:space:]>.,]
+with (claude|ai|llm) assistance
+ai-(assisted|generated|authored)
+🤖
