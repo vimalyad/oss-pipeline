@@ -23,7 +23,13 @@ services:
     restart: unless-stopped
 
   engine:
-    build: ./engine
+    # Context is the repository root, not ./engine, because config/ holds the
+    # forbidden-trailers pattern file that both the git hooks and the engine
+    # read. Duplicating it into engine/ would give the one rule that can never
+    # be undone two sources of truth.
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
     depends_on:
       db: { condition: service_healthy }
     environment:

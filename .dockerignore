@@ -1,0 +1,20 @@
+# The engine's build context is the repository root, so everything the engine
+# does not need is excluded explicitly.
+.git
+work/
+state/
+logs/
+reports/
+api/target/
+web/node_modules/
+web/dist/
+engine/bin/
+*.md
+docs/
+
+# Never. The engine receives its token through the environment, and a secret
+# baked into an image layer survives every attempt to remove it.
+.env
+config/identity.env
+config/ntfy-topic.txt
+config/ntfy-cmd-topic.txt

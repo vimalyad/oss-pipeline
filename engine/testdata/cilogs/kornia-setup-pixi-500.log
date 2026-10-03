@@ -1,0 +1,215 @@
+﻿2026-09-17T08:49:54.9455120Z Current runner version: '2.337.0'
+2026-09-17T08:49:54.9473040Z ##[group]Runner Image Provisioner
+2026-09-17T08:49:54.9473610Z Hosted Compute Agent
+2026-09-17T08:49:54.9474120Z Version: 20260828.587
+2026-09-17T08:49:54.9474530Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+2026-09-17T08:49:54.9475110Z Build Date: 2026-08-28T16:44:25Z
+2026-09-17T08:49:54.9475620Z Worker ID: {5b070c3c-2587-4806-b05f-17331afff662}
+2026-09-17T08:49:54.9476340Z Azure Region: westus
+2026-09-17T08:49:54.9476830Z ##[endgroup]
+2026-09-17T08:49:54.9478050Z ##[group]Operating System
+2026-09-17T08:49:54.9478610Z macOS
+2026-09-17T08:49:54.9479120Z 26.6.2
+2026-09-17T08:49:54.9479530Z 25G83
+2026-09-17T08:49:54.9480110Z ##[endgroup]
+2026-09-17T08:49:54.9480610Z ##[group]Runner Image
+2026-09-17T08:49:54.9481140Z Image: macos-26-arm64
+2026-09-17T08:49:54.9481690Z Version: 20260907.0351.1
+2026-09-17T08:49:54.9482650Z Included Software: https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/images/macos/macos-26-arm64-Readme.md
+2026-09-17T08:49:54.9483940Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-26-arm64%2F20260907.0351
+2026-09-17T08:49:54.9484610Z ##[endgroup]
+2026-09-17T08:49:54.9485460Z ##[group]GITHUB_TOKEN Permissions
+2026-09-17T08:49:54.9486710Z Contents: read
+2026-09-17T08:49:54.9487140Z Metadata: read
+2026-09-17T08:49:54.9487550Z ##[endgroup]
+2026-09-17T08:49:54.9489460Z Secret source: None
+2026-09-17T08:49:54.9490150Z Cache mode: write
+2026-09-17T08:49:54.9490710Z Prepare workflow directory
+2026-09-17T08:49:54.9773910Z Prepare all required actions
+2026-09-17T08:49:54.9811490Z Getting action download info
+2026-09-17T08:49:55.1615450Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-09-17T08:49:55.3638580Z Download action repository 'actions/cache@v6' (SHA:55cc8345863c7cc4c66a329aec7e433d2d1c52a9)
+2026-09-17T08:49:55.4485230Z Download action repository 'prefix-dev/setup-pixi@v0.10.2' (SHA:d3f436a425481402e6a95a1d1fc10331c708cd9e)
+2026-09-17T08:49:56.1630650Z Download action repository 'actions/upload-artifact@v7' (SHA:043fb46d1a93c77aae656e7c1c64a875d1fc6a0a)
+2026-09-17T08:49:56.2954390Z Uses: kornia/kornia/.github/workflows/tests.yml@refs/pull/4455/merge (d3ed1b43df7940cfb10dc9ba693a36a6f5969ea7)
+2026-09-17T08:49:56.2957110Z ##[group] Inputs
+2026-09-17T08:49:56.2957490Z   python-version: ["3.12"]
+2026-09-17T08:49:56.2957920Z   pytorch-version: ["2.5.1"]
+2026-09-17T08:49:56.2958520Z   torch-channel: pinned
+2026-09-17T08:49:56.2958870Z   os: macos-latest
+2026-09-17T08:49:56.2959210Z   pytorch-dtype: float32
+2026-09-17T08:49:56.2959560Z   device: cpu
+2026-09-17T08:49:56.2959870Z   pytest-extra: 
+2026-09-17T08:49:56.2960220Z   known-failure-profile: 
+2026-09-17T08:49:56.2960580Z   known-failure-mode: verify
+2026-09-17T08:49:56.2961080Z   optimizer: 
+2026-09-17T08:49:56.2961600Z   fail-fast: false
+2026-09-17T08:49:56.2961940Z   runslow: false
+2026-09-17T08:49:56.2962370Z   ref: d3ed1b43df7940cfb10dc9ba693a36a6f5969ea7
+2026-09-17T08:49:56.2962840Z   cache-path: weights/
+2026-09-17T08:49:56.2963420Z   cache-key: model-weights-e5ae30916678c5a95e41fd3248b61bae0743ff20f04c8b7d1c2dbfff88182273
+2026-09-17T08:49:56.2964410Z   cache-restore-keys: model-weights-e5ae30916678c5a95e41fd3248b61bae0743ff20f04c8b7d1c2dbfff88182273
+model-weights-
+
+2026-09-17T08:49:56.2965160Z ##[endgroup]
+2026-09-17T08:49:56.2965640Z Complete job name: tests (macos-latest, float32, 3.12, 2.5.1) / tests (3.12, 2.5.1)
+2026-09-17T08:49:56.3429430Z ##[group]Run actions/checkout@v7
+2026-09-17T08:49:56.3429980Z with:
+2026-09-17T08:49:56.3430340Z   ref: d3ed1b43df7940cfb10dc9ba693a36a6f5969ea7
+2026-09-17T08:49:56.3430780Z   repository: kornia/kornia
+2026-09-17T08:49:56.3433550Z   token: ***
+2026-09-17T08:49:56.3433870Z   ssh-strict: true
+2026-09-17T08:49:56.3434200Z   ssh-user: git
+2026-09-17T08:49:56.3434580Z   persist-credentials: true
+2026-09-17T08:49:56.3434990Z   clean: true
+2026-09-17T08:49:56.3435350Z   sparse-checkout-cone-mode: true
+2026-09-17T08:49:56.3435750Z   fetch-depth: 1
+2026-09-17T08:49:56.3436470Z   fetch-tags: false
+2026-09-17T08:49:56.3436900Z   show-progress: true
+2026-09-17T08:49:56.3437250Z   lfs: false
+2026-09-17T08:49:56.3437580Z   submodules: false
+2026-09-17T08:49:56.3437930Z   set-safe-directory: true
+2026-09-17T08:49:56.3438340Z   allow-unsafe-pr-checkout: false
+2026-09-17T08:49:56.3438910Z ##[endgroup]
+2026-09-17T08:49:56.7070210Z Syncing repository: kornia/kornia
+2026-09-17T08:49:56.7071830Z ##[group]Getting Git version info
+2026-09-17T08:49:56.7072370Z Working directory is '/Users/runner/work/kornia/kornia'
+2026-09-17T08:49:56.7073160Z [command]/opt/homebrew/bin/git version
+2026-09-17T08:49:56.7705770Z git version 2.55.0
+2026-09-17T08:49:56.7724180Z ##[endgroup]
+2026-09-17T08:49:56.7732710Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/4865fbb0-c5a4-48e8-9c1f-6b14984b5f6d/.gitconfig'
+2026-09-17T08:49:56.7744030Z Temporarily overriding HOME='/Users/runner/work/_temp/4865fbb0-c5a4-48e8-9c1f-6b14984b5f6d' before making global git config changes
+2026-09-17T08:49:56.7747670Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-17T08:49:56.7752830Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/kornia/kornia
+2026-09-17T08:49:56.7905970Z Deleting the contents of '/Users/runner/work/kornia/kornia'
+2026-09-17T08:49:56.7908300Z ##[group]Determining repository object format
+2026-09-17T08:49:56.7909560Z ##[endgroup]
+2026-09-17T08:49:56.7910410Z ##[group]Initializing the repository
+2026-09-17T08:49:56.7913220Z [command]/opt/homebrew/bin/git init /Users/runner/work/kornia/kornia
+2026-09-17T08:49:56.8153130Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-09-17T08:49:56.8154300Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-09-17T08:49:56.8155130Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-09-17T08:49:56.8155750Z hint: call:
+2026-09-17T08:49:56.8156100Z hint:
+2026-09-17T08:49:56.8156600Z hint: 	git config --global init.defaultBranch <name>
+2026-09-17T08:49:56.8157210Z hint:
+2026-09-17T08:49:56.8158130Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-09-17T08:49:56.8159160Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-09-17T08:49:56.8160270Z hint:
+2026-09-17T08:49:56.8161380Z hint: 	git branch -m <name>
+2026-09-17T08:49:56.8161940Z hint:
+2026-09-17T08:49:56.8162660Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-09-17T08:49:56.8163610Z Initialized empty Git repository in /Users/runner/work/kornia/kornia/.git/
+2026-09-17T08:49:56.8168390Z [command]/opt/homebrew/bin/git remote add origin https://github.com/kornia/kornia
+2026-09-17T08:49:56.8243550Z ##[endgroup]
+2026-09-17T08:49:56.8244380Z ##[group]Disabling automatic garbage collection
+2026-09-17T08:49:56.8246350Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2026-09-17T08:49:56.8307170Z ##[endgroup]
+2026-09-17T08:49:56.8307950Z ##[group]Setting up auth
+2026-09-17T08:49:56.8308490Z Removing SSH command configuration
+2026-09-17T08:49:56.8311060Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-17T08:49:56.8367480Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-17T08:49:56.9204560Z Removing HTTP extra header
+2026-09-17T08:49:56.9207770Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-17T08:49:56.9271850Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-17T08:49:57.0013640Z Removing includeIf entries pointing to credentials config files
+2026-09-17T08:49:57.0015170Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-17T08:49:57.0067430Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-17T08:49:57.0766500Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-09-17T08:49:57.1044370Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/kornia/kornia/.git.path /Users/runner/work/_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config
+2026-09-17T08:49:57.1104950Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/kornia/kornia/.git/worktrees/*.path /Users/runner/work/_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config
+2026-09-17T08:49:57.1165530Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config
+2026-09-17T08:49:57.1221010Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config
+2026-09-17T08:49:57.1271650Z ##[endgroup]
+2026-09-17T08:49:57.1272270Z ##[group]Fetching the repository
+2026-09-17T08:49:57.1275620Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin d3ed1b43df7940cfb10dc9ba693a36a6f5969ea7
+2026-09-17T08:49:59.0656730Z From https://github.com/kornia/kornia
+2026-09-17T08:49:59.0662730Z  * branch            d3ed1b43df7940cfb10dc9ba693a36a6f5969ea7 -> FETCH_HEAD
+2026-09-17T08:49:59.0678260Z [command]/opt/homebrew/bin/git rev-parse --verify --quiet d3ed1b43df7940cfb10dc9ba693a36a6f5969ea7^{object}
+2026-09-17T08:49:59.0753580Z d3ed1b43df7940cfb10dc9ba693a36a6f5969ea7
+2026-09-17T08:49:59.0766430Z ##[endgroup]
+2026-09-17T08:49:59.0768130Z ##[group]Determining the checkout info
+2026-09-17T08:49:59.0769880Z ##[endgroup]
+2026-09-17T08:49:59.0772560Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2026-09-17T08:49:59.0895840Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2026-09-17T08:49:59.1044350Z ##[group]Checking out the ref
+2026-09-17T08:49:59.1054090Z [command]/opt/homebrew/bin/git checkout --progress --force d3ed1b43df7940cfb10dc9ba693a36a6f5969ea7
+2026-09-17T08:49:59.3450000Z HEAD is now at d3ed1b4 Merge e9c94a87dd5b209ad93fe78dce2b6854bec9e943 into 8c71df9a0a31af0a55c97efc81a0a3c7f134affb
+2026-09-17T08:49:59.3466320Z ##[endgroup]
+2026-09-17T08:49:59.3723600Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2026-09-17T08:49:59.3898540Z d3ed1b43df7940cfb10dc9ba693a36a6f5969ea7
+2026-09-17T08:49:59.4486360Z ##[group]Run actions/cache/restore@v6
+2026-09-17T08:49:59.4487450Z with:
+2026-09-17T08:49:59.4488200Z   path: weights/
+2026-09-17T08:49:59.4489400Z   key: model-weights-e5ae30916678c5a95e41fd3248b61bae0743ff20f04c8b7d1c2dbfff88182273
+2026-09-17T08:49:59.4491220Z   restore-keys: model-weights-e5ae30916678c5a95e41fd3248b61bae0743ff20f04c8b7d1c2dbfff88182273
+model-weights-
+
+2026-09-17T08:49:59.4492940Z   enableCrossOsArchive: false
+2026-09-17T08:49:59.4493630Z   fail-on-cache-miss: false
+2026-09-17T08:49:59.4494310Z   lookup-only: false
+2026-09-17T08:49:59.4495060Z ##[endgroup]
+2026-09-17T08:49:59.6819610Z Cache hit for: model-weights-e5ae30916678c5a95e41fd3248b61bae0743ff20f04c8b7d1c2dbfff88182273
+2026-09-17T08:50:00.7233790Z Received 134217728 of 1182949418 (11.3%), 127.9 MBs/sec
+2026-09-17T08:50:01.7539110Z Received 306184192 of 1182949418 (25.9%), 144.2 MBs/sec
+2026-09-17T08:50:02.7471100Z Received 507510784 of 1182949418 (42.9%), 159.9 MBs/sec
+2026-09-17T08:50:03.8126940Z Received 671088640 of 1182949418 (56.7%), 156.7 MBs/sec
+2026-09-17T08:50:04.8245770Z Received 847249408 of 1182949418 (71.6%), 158.6 MBs/sec
+2026-09-17T08:50:05.8150800Z Received 1010827264 of 1182949418 (85.4%), 158.2 MBs/sec
+2026-09-17T08:50:06.8289740Z Received 1182949418 of 1182949418 (100.0%), 158.7 MBs/sec
+2026-09-17T08:50:06.8301290Z Cache Size: ~1128 MB (1182949418 B)
+2026-09-17T08:50:06.8484440Z [command]/opt/homebrew/bin/gtar -xf /Users/runner/work/_temp/fea97276-36a6-4d3e-a456-9c3a106ca01f/cache.tzst -P -C /Users/runner/work/kornia/kornia --delay-directory-restore --use-compress-program unzstd
+2026-09-17T08:50:11.0222880Z Cache restored successfully
+2026-09-17T08:50:11.1225270Z Cache restored from key: model-weights-e5ae30916678c5a95e41fd3248b61bae0743ff20f04c8b7d1c2dbfff88182273
+2026-09-17T08:50:11.1507150Z ##[group]Run echo "name=py$(echo '3.12' | tr -d '.')" >> $GITHUB_OUTPUT
+2026-09-17T08:50:11.1507760Z [36;1mecho "name=py$(echo '3.12' | tr -d '.')" >> $GITHUB_OUTPUT[0m
+2026-09-17T08:50:11.1585210Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+2026-09-17T08:50:11.1585700Z ##[endgroup]
+2026-09-17T08:50:11.2581810Z ##[group]Run prefix-dev/setup-pixi@v0.10.2
+2026-09-17T08:50:11.2582310Z with:
+2026-09-17T08:50:11.2582520Z   pixi-version: v0.40.0
+2026-09-17T08:50:11.2582830Z   cache: true
+2026-09-17T08:50:11.2583050Z   environments: py312
+2026-09-17T08:50:11.2583220Z ##[endgroup]
+2026-09-17T08:50:11.4689440Z ##[group]Downloading Pixi
+2026-09-17T08:50:11.8697120Z Unexpected HTTP response: 500
+2026-09-17T08:50:11.8798490Z Waiting 20 seconds before trying again
+2026-09-17T08:50:32.0633960Z Unexpected HTTP response: 500
+2026-09-17T08:50:32.0634870Z Waiting 15 seconds before trying again
+2026-09-17T08:50:47.2406300Z ##[endgroup]
+2026-09-17T08:50:47.2532370Z ##[error]Unexpected HTTP response: 500
+2026-09-17T08:50:47.2829690Z Post job cleanup.
+2026-09-17T08:50:47.4547440Z Post job cleanup.
+2026-09-17T08:50:47.5640120Z [command]/opt/homebrew/bin/git version
+2026-09-17T08:50:47.5874600Z git version 2.55.0
+2026-09-17T08:50:47.5894350Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/b24f1e21-dc49-42bb-94df-9fcbdbe495d6/.gitconfig'
+2026-09-17T08:50:47.5907490Z Temporarily overriding HOME='/Users/runner/work/_temp/b24f1e21-dc49-42bb-94df-9fcbdbe495d6' before making global git config changes
+2026-09-17T08:50:47.5909920Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-17T08:50:47.5911300Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/kornia/kornia
+2026-09-17T08:50:47.6053210Z Removing SSH command configuration
+2026-09-17T08:50:47.6053830Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-17T08:50:47.6126540Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-17T08:50:47.7240700Z Removing HTTP extra header
+2026-09-17T08:50:47.7249790Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-17T08:50:47.7407650Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-17T08:50:47.8651740Z Removing includeIf entries pointing to credentials config files
+2026-09-17T08:50:47.8753050Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-17T08:50:47.8801930Z includeif.gitdir:/Users/runner/work/kornia/kornia/.git.path
+2026-09-17T08:50:47.8802580Z includeif.gitdir:/Users/runner/work/kornia/kornia/.git/worktrees/*.path
+2026-09-17T08:50:47.8803010Z includeif.gitdir:/github/workspace/.git.path
+2026-09-17T08:50:47.8803380Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-17T08:50:47.8804490Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/kornia/kornia/.git.path
+2026-09-17T08:50:47.8806050Z /Users/runner/work/_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config
+2026-09-17T08:50:47.8819730Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/kornia/kornia/.git.path \/Users\/runner\/work\/_temp\/git\-credentials\-04e033f6\-70b0\-4baa\-be6e\-d8bda404a05b\.config
+2026-09-17T08:50:47.8821070Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/kornia/kornia/.git/worktrees/*.path
+2026-09-17T08:50:47.8821680Z /Users/runner/work/_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config
+2026-09-17T08:50:47.8822970Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/kornia/kornia/.git/worktrees/*.path \/Users\/runner\/work\/_temp\/git\-credentials\-04e033f6\-70b0\-4baa\-be6e\-d8bda404a05b\.config
+2026-09-17T08:50:47.8875700Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-09-17T08:50:47.8941480Z /github/runner_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config
+2026-09-17T08:50:47.8947470Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-04e033f6\-70b0\-4baa\-be6e\-d8bda404a05b\.config
+2026-09-17T08:50:47.9017870Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-17T08:50:47.9071720Z /github/runner_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config
+2026-09-17T08:50:47.9077070Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-04e033f6\-70b0\-4baa\-be6e\-d8bda404a05b\.config
+2026-09-17T08:50:47.9146040Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-17T08:50:48.0152440Z Removing credentials config '/Users/runner/work/_temp/git-credentials-04e033f6-70b0-4baa-be6e-d8bda404a05b.config'
+2026-09-17T08:50:48.0255240Z Cleaning up orphan processes

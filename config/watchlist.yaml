@@ -1,0 +1,62 @@
+# Tiered watchlist. Tier 1 is what the pipeline may target today; tier 2 unlocks
+# only once merge rate holds (see policy.yaml: watchlist.unlock_merge_rate).
+#
+# Tier 1 selection criterion is REVIEW-QUEUE TRACTABILITY, not prestige. A
+# recognizable mid-size repo with an active maintainer and a real
+# good-first-issue culture is worth more than a mega-repo where an outsider's
+# first PR sits unreviewed for months. Every one of these is still a name worth
+# having on a contribution record.
+
+tier1:
+  devops:
+    - kubernetes-sigs/kind
+    - helm/helm
+    - argoproj/argo-cd
+    - prometheus/prometheus
+    - open-telemetry/opentelemetry-collector
+    - goreleaser/goreleaser
+  python_ml_cv:
+    - scikit-learn/scikit-learn
+    - opencv/opencv-python
+    - albumentations-team/albumentations
+    - huggingface/datasets
+    - pytorch/vision
+    - kornia/kornia
+  js_ts:
+    - vitejs/vite
+    - vitest-dev/vitest
+    - eslint/eslint
+    - prettier/prettier
+    - typescript-eslint/typescript-eslint
+    - date-fns/date-fns
+  go_rust_cli:
+    - cli/cli
+    - junegunn/fzf
+    - sharkdp/bat
+    - sharkdp/fd
+    - jesseduffield/lazygit
+    - charmbracelet/bubbletea
+    - astral-sh/ruff
+
+# Aspirational. High prestige, brutal review queues for newcomers. Not targeted
+# until the pipeline has demonstrated it can get PRs merged in tier 1.
+tier2:
+  - kubernetes/kubernetes
+  - huggingface/transformers
+  - pandas-dev/pandas
+  - numpy/numpy
+  - grafana/grafana
+  - storybookjs/storybook
+  - BurntSushi/ripgrep
+  - astral-sh/uv
+  - pytorch/pytorch
+
+# Labels worth harvesting, in rough order of how strongly they signal that a
+# maintainer has triaged and accepted the issue.
+labels:
+  - good first issue
+  - good-first-issue
+  - help wanted
+  - help-wanted
+  - bug
+  - confirmed

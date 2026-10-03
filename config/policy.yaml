@@ -1,0 +1,93 @@
+# Hard caps. A pipeline that *can* open 50 PRs a day must not.
+# Mirrors the `caps` table, which is authoritative once the engine is on
+# Postgres. Kept in sync so a local run without a database behaves the same.
+#
+# Tuned for ten pull requests a week. max_open_per_repo is 3 and the org
+# cooldown is 0 at the operator's explicit direction: several open pull
+# requests on one project from one outside contributor reads as a campaign
+# rather than as contributions. The numbers are config precisely so that
+# decision is reversible without a deployment.
+caps:
+  prs_per_day: 4
+  prs_per_week: 10
+  max_open_prs: 30
+  max_open_per_repo: 3
+  org_cooldown_days: 0
+  max_candidates_per_run: 200
+  # A candidate rejected because someone had claimed it, or was mid-PR, or the
+  # thread had not converged, deserves another look once that has had time to
+  # change. Structural rejections and your own rejections never come back.
+  reconsider_rejected_after_days: 7
+  # The predecessor deferred 89 candidates unassessed at 12 per run.
+  max_harvest_per_run: 40
+
+# Contest classification thresholds (days). Objective signals only.
+staleness:
+  author_silent_days: 60
+  # A pull request nobody has reviewed is the project's backlog, not
+  # abandoned work, and its author is waiting rather than stalling.
+  unreviewed_silent_days: 365
+  # A pull request nobody has reviewed is the project's backlog, not abandoned
+  # work, and its author is waiting rather than stalling. Author silence only
+  # counts as staleness past this much longer window.
+  changes_requested_days: 30
+  ci_red_untouched_days: 30
+  claim_honoured_days: 30     # respect "I'm working on this" for this long
+  active_pr_days: 30          # activity inside this window => hard exclude
+
+watchlist:
+  tier: 1
+  unlock_merge_rate: 0.5      # tier 2 needs >=50% merge rate over
+  unlock_min_prs: 6           # at least this many closed PRs
+
+scoring:
+  # require_approach_or_criteria and reject_workflow_changes stay true, and
+  # that is structural rather than taste. The implementer builds from the
+  # brief, so with no approach and no criteria there is nothing to build
+  # against and the agent refuses; and preflight will not ship a diff that
+  # touches .github/workflows, so such a candidate can never complete.
+  require_converged_thread: false
+
+  # Maintainer buy-in, split from "maintainer told us how".
+  #
+  # Outside contributors cannot apply labels, so a triage-gated label IS proof a
+  # maintainer accepted the issue. Requiring a maintainer to have *stated an
+  # approach* rejected 11 of 14 harvested candidates on the first real sweep --
+  # most good-first-issues carry acceptance without a prescribed fix.
+  #
+  # So: acceptance is always required. An approach is required only when we
+  # otherwise have no definition of done at all (no acceptance criteria
+  # either), because then a patch would be pure guesswork.
+  require_maintainer_acceptance: false
+  require_approach_or_criteria: true
+  require_tests: false
+  require_contributing: false   # soft penalty instead -- see score.py
+  reject_docs_typo_only: true
+  reject_workflow_changes: true      # fork CI usually cannot run these
+  first_time_contributor_window_days: 90
+  stale_issue_penalty_years: 2   # soft penalty, not a rejection
+
+# Labels only someone with triage rights can apply => maintainer accepted it.
+acceptance_labels:
+  - good first issue
+  - good-first-issue
+  - "good first issue :baby:"
+  - help wanted
+  - help-wanted
+  - confirmed
+  - accepted
+  - triaged
+  - bug/confirmed
+  - kind/bug
+  - status/accepted
+
+# Labels that explicitly say the opposite: nobody has triaged this yet.
+untriaged_labels:
+  - triage/pending
+  - needs-triage
+  - needs triage
+  - untriaged
+  - needs-info
+  - needs more info
+  - question
+  - discussion
