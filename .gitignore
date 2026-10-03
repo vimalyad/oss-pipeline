@@ -1,0 +1,25 @@
+# Secrets and identity. The topic IS the capability and the token must never
+# reach a file git can see.
+.env
+config/identity.env
+config/ntfy-topic.txt
+config/ntfy-cmd-topic.txt
+*.pem
+*.key
+
+# Working clones of target repositories. Large, and they contain third-party
+# code this repo must never claim to ship.
+work/
+
+# Build output
+engine/bin/
+api/target/
+web/node_modules/
+web/dist/
+
+# Local state that the database now owns. Kept ignored so a stray export
+# cannot be committed by `git add -A`.
+state/
+logs/
+reports/
+*.local.yml

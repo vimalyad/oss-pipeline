@@ -1,0 +1,68 @@
+# The whole flow, so a second machine needs Docker and nothing else.
+#
+# The engine builds sibling containers per target repository, so it is given
+# the Docker socket. That is a real privilege and the reason the engine image
+# contains no credentials of its own beyond the GitHub token it needs to push:
+# the containers it builds get neither.
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ossp
+      POSTGRES_USER: ossp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ossp -d ossp"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  engine:
+    build: ./engine
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://ossp:${POSTGRES_PASSWORD}@db:5432/ossp?sslmode=disable
+      # The token. On macOS the predecessor read this from the Keychain, which
+      # does not exist in a container, so it comes from .env instead. That is
+      # strictly weaker and is the one security regression of containerising
+      # the engine -- keep .env mode 600 and never commit it.
+      GH_TOKEN: ${GH_TOKEN:?set GH_TOKEN in .env}
+      OSS_LOGIN: ${OSS_LOGIN:?}
+      OSS_NAME: ${OSS_NAME:?}
+      OSS_EMAIL: ${OSS_EMAIL:?}
+      WORKER_ID: engine-1
+      WORKERS: ${WORKERS:-3}
+    volumes:
+      # Sibling containers, not nested: the engine asks the host daemon to run
+      # the per-repository sandboxes next to it.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Clones live on a named volume so a worker restart does not re-clone
+      # thirty repositories.
+      - clones:/work
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/ossp
+      SPRING_DATASOURCE_USERNAME: ossp
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      # Read-mostly by design. The API may approve, reject and queue a reply;
+      # it may not push, open a pull request or post a comment. Those stay in
+      # the engine, which is the only component that holds the token.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  clones:
