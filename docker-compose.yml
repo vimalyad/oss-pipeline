@@ -54,7 +54,10 @@ services:
     restart: unless-stopped
 
   api:
-    build: ./api
+    # Root context, because the image builds the dashboard from web/ as well.
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     depends_on:
       db: { condition: service_healthy }
     environment:
@@ -65,8 +68,14 @@ services:
       # it may not push, open a pull request or post a comment. Those stay in
       # the engine, which is the only component that holds the token.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      # Who the audit log names for a decision made in the dashboard.
+      OSS_LOGIN: ${OSS_LOGIN:?}
     ports:
-      - "${API_PORT:-8080}:8080"
+      # Localhost only. The dashboard can approve work that ends in a public
+      # pull request under your name, and it has no login: whoever can reach
+      # this port can approve. Reach it from elsewhere through an SSH tunnel
+      # or a VPN, never by widening this binding.
+      - "127.0.0.1:${API_PORT:-8080}:8080"
     restart: unless-stopped
 
 volumes:

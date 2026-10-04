@@ -1,0 +1,37 @@
+# The schema belongs to db/migrations, which the database container applies.
+# This service never creates or alters a table: two services writing one
+# schema is exactly how the predecessor lost its human decisions.
+spring:
+  application:
+    name: ossp-api
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ossp}
+    username: ${SPRING_DATASOURCE_USERNAME:ossp}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      maximum-pool-size: 5
+  sql:
+    init:
+      mode: never
+  mvc:
+    problemdetails:
+      enabled: true
+
+ossp:
+  # Who the audit log names for a decision made in the dashboard. There is no
+  # login: the port is bound to localhost, and the one person who can reach it
+  # is the one person who may approve.
+  operator: ${OSS_LOGIN:operator}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+server:
+  shutdown: graceful

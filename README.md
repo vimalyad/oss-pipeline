@@ -18,7 +18,7 @@ Target throughput is **10 pull requests a week**.
                   └──────▲───────┘  not in either service
                          │ reads
                   ┌──────┴───────┐
-   Browser ◀───────│ Spring Boot  │  REST + JPA + dashboard + Actuator
+   Browser ◀───────│ Spring Boot  │  REST + TypeScript dashboard + Actuator
                   └──────────────┘  may approve and reject; may NOT publish
 ```
 
@@ -105,6 +105,57 @@ open http://localhost:8080
 
 Dry run is the default everywhere. Nothing forks, commits, pushes or opens a
 pull request without `--execute`.
+
+The engine uses Postgres whenever `DATABASE_URL` is set, and the JSON files
+under `state/` otherwise. A set but unreachable database is an error, never a
+quiet fall back to files. To move existing JSON state across (dry run first):
+
+```bash
+DATABASE_URL=postgres://... pipeline import-json            # what would be copied
+DATABASE_URL=postgres://... pipeline import-json --execute
+```
+
+## The dashboard
+
+`api/` (Spring Boot) and `web/` (TypeScript, React) ship as one image: the
+frontend is built into the jar and served from the same origin.
+
+| Page | What it answers |
+|---|---|
+| Overview | the caps and how much of each is spent; what is waiting on you, replies first; weekly throughput; the funnel |
+| Proposals | each proposal with its brief and contest evidence, and approve / reject |
+| Pull requests | every pull request by state, with checks, review and diff size |
+| Pull request | one timeline of pipeline decisions, GitHub state and maintainer feedback, with drafted replies |
+| Candidates | everything ever looked at, by stage, with rejection reasons |
+| Audit log | the append-only record |
+
+Approve and reject write the status, the history edge and the audit row in one
+transaction, and the history trigger is the final word on legality: an edge
+the table does not allow is refused by Postgres and reported in the page.
+A rejection needs a reason, and a rejection made here is never reconsidered.
+The engine refuses to save over a decision made after it loaded the candidate.
+
+The port is bound to `127.0.0.1`. There is no login, so whoever can reach the
+port can approve; reach it from elsewhere through an SSH tunnel.
+
+Working on it locally:
+
+```bash
+# a database with the real migrations and fictional data
+podman run -d --name ossp-dev-pg -e POSTGRES_DB=ossp -e POSTGRES_USER=ossp \
+  -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:17-alpine
+for f in db/migrations/*.sql api/dev/seed.sql; do
+  podman exec -i ossp-dev-pg psql -q -U ossp -d ossp < "$f"; done
+
+(cd api && SPRING_DATASOURCE_PASSWORD=dev mvn spring-boot:run)   # :8080
+(cd web && npm install && npm run dev)                            # :5173, proxies /api
+```
+
+`api/dev/seed.sql` is made up and must never be loaded into the real
+database. Tests: `go test ./...` in `engine/`, `mvn test` in `api/` and
+`npm test` in `web/`. The database-backed ones run when
+`OSSP_TEST_DATABASE_URL` (engine) or `OSSP_TEST_JDBC_URL` (api) points at a
+database with the migrations applied, and skip otherwise.
 
 ## Hard rules, unchanged
 
