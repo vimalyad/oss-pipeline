@@ -19,6 +19,7 @@ import (
 
 	"github.com/vimalyad/oss-pipeline/engine/internal/model"
 	"github.com/vimalyad/oss-pipeline/engine/internal/profile"
+	"github.com/vimalyad/oss-pipeline/engine/internal/score"
 )
 
 // Grant is a countersigned authorisation for one domain at one level.
@@ -251,10 +252,25 @@ func qualityBlockers(c *model.Candidate, claSigned bool) []string {
 	}
 	// A soft penalty ranks a candidate below cleaner ones when a person is
 	// choosing. With nobody choosing, "ranked lower" means nothing, so the
-	// only safe reading is to require a clean one.
-	if len(c.SoftPenalties) > 0 {
+	// only safe reading is to require a clean one -- with one exception.
+	//
+	// An old issue is penalised because its stated approach may predate the
+	// current code. When a maintainer has stated one, whether it still holds
+	// is settled mechanically before anything is public: the patch is built
+	// and tested against today's code in the sandbox, and a stale approach
+	// fails there rather than in a maintainer's inbox. Most good-first-issues
+	// are years old, so refusing on age alone refused nearly everything.
+	hasApproach := c.Brief != nil && strings.TrimSpace(c.Brief.MaintainerDesiredApproach) != ""
+	var penalties []string
+	for _, p := range c.SoftPenalties {
+		if hasApproach && score.IsAgePenalty(p) {
+			continue
+		}
+		penalties = append(penalties, p)
+	}
+	if len(penalties) > 0 {
 		out = append(out, fmt.Sprintf("%d soft penalty(ies): %s",
-			len(c.SoftPenalties), first(c.SoftPenalties)))
+			len(penalties), first(penalties)))
 	}
 	if len(c.Blockers) > 0 {
 		out = append(out, "has a blocker needing a human: "+first(c.Blockers))

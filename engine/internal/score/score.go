@@ -209,7 +209,7 @@ func Score(c *model.Candidate, cfg *policy.Config, otherLogins []string, d Deps)
 			ageDays := int(d.Now().UTC().Sub(opened).Hours() / 24)
 			if ageDays > p.Scoring.StaleIssuePenaltyYears*365 {
 				r.Penalties = append(r.Penalties, fmt.Sprintf(
-					"issue opened %dy ago (%s); the stated approach may predate the current code",
+					AgePenaltyPrefix+"%dy ago (%s); the stated approach may predate the current code",
 					ageDays/365, opened.Format("2006-01")))
 			}
 		}
@@ -332,3 +332,10 @@ func pyList(ss []string) string {
 	}
 	return "[" + strings.Join(q, ", ") + "]"
 }
+
+// AgePenaltyPrefix starts the soft penalty for an old issue. Exported so the
+// autonomous gate can name this penalty rather than match its wording.
+const AgePenaltyPrefix = "issue opened "
+
+// IsAgePenalty reports whether a soft penalty is only the issue's age.
+func IsAgePenalty(p string) bool { return strings.HasPrefix(p, AgePenaltyPrefix) }

@@ -154,3 +154,19 @@ func TestRepoRampOneAtATimeUntilAMerge(t *testing.T) {
 		t.Error("held a different repository")
 	}
 }
+
+func TestAutonomyOnlyOnSeedRepos(t *testing.T) {
+	prof := &profile.Profile{Domains: []profile.Domain{
+		{ID: "devops-go", SeedRepos: []string{"helm/helm", "kubernetes-sigs/kind"}},
+	}}
+	if !isSeedRepo(prof, "helm/helm") || !isSeedRepo(prof, "Helm/Helm") {
+		t.Error("a seed repository was not recognised")
+	}
+	if isSeedRepo(prof, "someone/found-by-search") {
+		t.Error("a repository the operator never named was treated as a seed")
+	}
+	// The refusal is lasting: waiting does not turn a repository into a seed.
+	if onlyTemporary([]string{notSeedBlocker}) {
+		t.Error("a non-seed refusal would be held forever instead of rejected")
+	}
+}

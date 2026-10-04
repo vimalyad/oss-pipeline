@@ -123,8 +123,13 @@ systemctl --user start ossp-daily                # run one now
 pipeline halt "<reason>"                         # stop it; `resume` to lift
 ```
 
-The runner waits for the network and the database, rebuilds the engine if
-the source changed, and refuses to start past a failing `pipeline doctor`.
+The runner runs exactly what is on `main`, never the working tree: it
+extracts `main` into `~/.local/state/oss-pipeline/live`, links the secrets and
+the `state`, `reports`, `logs` and `work` directories into it, builds the
+engine there (cached by revision), and runs from that copy. Work in progress
+on a branch in the clone can therefore never reach a scheduled run. It waits
+for the network and the database, and refuses to start past a failing
+`pipeline doctor`.
 If the network or database is still missing after 30 minutes it exits 75 and
 systemd retries half-hourly, up to a day's worth; any other failure is not
 retried, because the cycle publishes.
@@ -208,11 +213,13 @@ database with the migrations applied, and skip otherwise.
   - Autonomous caps, ramped: 2 a day, 5 a week, 10 open.
   - One autonomous pull request per repository until something of ours
     merges there, and none after one is closed unmerged.
-  - A bar stricter than the manual one: no soft penalty, no pull request
-    from anyone else on the issue, an approach stated by a maintainer, and
-    a repository that does not ban automated contributions, does not
-    require an AI disclosure (which would assert a review nobody did), and
-    has no unsigned CLA.
+  - A bar stricter than the manual one: no soft penalty (an old issue's
+    age excepted when a maintainer has stated an approach, since the
+    sandbox tests that approach against today's code), no pull request from
+    anyone else on the issue, an approach stated by a maintainer, a seed
+    repository the operator named, and a repository that does not ban
+    automated contributions, does not require an AI disclosure (which would
+    assert a review nobody did), and has no unsigned CLA.
 
   A cap or the per-repository limit holds a proposal for the next run;
   anything else rejects it with every reason recorded, since nobody would

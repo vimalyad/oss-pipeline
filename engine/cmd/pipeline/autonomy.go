@@ -112,6 +112,10 @@ func autoApproveCmd(root string, args []string) int {
 			CLASigned:     cfg.CLASigned(c.Repo),
 		}
 		d := autogate.Decide(in)
+		if !isSeedRepo(prof, c.Repo) {
+			d.Allowed = false
+			d.Blockers = append(d.Blockers, notSeedBlocker)
+		}
 		if !matched {
 			// Say it once. With no domain, autogate's grant and profile gates
 			// both report on a domain with no name, which explains nothing.
@@ -316,6 +320,27 @@ func domainRecord(all []*model.Candidate, prof *profile.Profile, domain string) 
 		}
 	}
 	return r
+}
+
+// notSeedBlocker refuses autonomy on any repository the operator did not name.
+//
+// The profile's seed repositories are the operator's review of where the
+// pipeline may work. Discovery sweeps only those today; open search is
+// configured but not built. internal/sources describes a quarantine for
+// repositories it would find -- the first unattended pull request into a
+// project nobody looked at is the one that should not happen -- but nothing
+// records when such a repository was first seen, so the quarantine cannot be
+// measured. Until it can, a repository that is not a seed gets no autonomous
+// pull request at all, rather than one on its first day.
+const notSeedBlocker = "not a seed repository in the profile; autonomy needs the operator to have named it"
+
+func isSeedRepo(prof *profile.Profile, repo string) bool {
+	for _, rd := range prof.SeedRepos() {
+		if strings.EqualFold(rd.Repo, repo) {
+			return true
+		}
+	}
+	return false
 }
 
 // mergedOn reports whether anything of ours has merged on repo, which ends

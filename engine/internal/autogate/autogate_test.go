@@ -120,6 +120,31 @@ func TestASignedCLAIsNotARefusal(t *testing.T) {
 	}
 }
 
+// An old issue is let through only on a maintainer's stated approach, which
+// the sandbox then tests against today's code. Any other soft penalty still
+// refuses, and so does age with no approach to test.
+func TestAgeAloneIsNotARefusalWhenAnApproachIsStated(t *testing.T) {
+	age := "issue opened 4y ago (2022-03); the stated approach may predate the current code"
+	in := passing()
+	in.Candidate.SoftPenalties = []string{age}
+	if d := Decide(in); !d.Allowed {
+		t.Fatalf("age with a stated approach was refused: %s", d.Why())
+	}
+
+	in = passing()
+	in.Candidate.SoftPenalties = []string{age, "no CONTRIBUTING.md (ranked lower)"}
+	if d := Decide(in); d.Allowed || !strings.Contains(d.Why(), "CONTRIBUTING") {
+		t.Fatalf("another penalty rode in with age: %s", d.Why())
+	}
+
+	in = passing()
+	in.Candidate.SoftPenalties = []string{age}
+	in.Candidate.Brief.MaintainerDesiredApproach = ""
+	if d := Decide(in); d.Allowed || !strings.Contains(d.Why(), "soft penalty") {
+		t.Fatalf("age without an approach was not refused for its age: %s", d.Why())
+	}
+}
+
 // TestHaltShortCircuits: nothing may be reported alongside HALT, because a
 // list of other blockers invites fixing them and trying again.
 func TestHaltShortCircuits(t *testing.T) {

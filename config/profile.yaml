@@ -77,6 +77,12 @@ domains:
 discovery:
   # seeded_only | seeded_plus_open | open_only
   # seeded_plus_open keeps the hand-curated list and lets new repos in slowly.
+  #
+  # NOT BUILT YET: discovery sweeps only the seed_repos above, whatever this
+  # says. The open_search settings are read and ignored -- the repository
+  # search (internal/sources RepoQuery) is written but never called. Autonomy
+  # is limited to seed repositories until it is, and a quarantine for what it
+  # finds can be measured.
   mode: seeded_plus_open
   require_domain_match: true
   quarantine_days: 14
