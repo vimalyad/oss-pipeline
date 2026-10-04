@@ -1,7 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
-import { api } from "../api/client";
 import { Icon, type IconName } from "./Icon";
 
 type Theme = "light" | "dark" | null;
@@ -44,7 +42,6 @@ function Item({ to, icon, label, count, end }: { to: string; icon: IconName; lab
 
 export function Layout() {
   const { dark, toggle } = useTheme();
-  const overview = useQuery({ queryKey: ["overview"], queryFn: api.overview });
   const { pathname } = useLocation();
 
   // Move focus to the page heading on navigation, so a screen reader announces
@@ -69,7 +66,7 @@ export function Layout() {
         </div>
         <nav aria-label="Main">
           <Item to="/" end icon="home" label="Overview" />
-          <Item to="/proposals" icon="inbox" label="Proposals" count={overview.data?.awaitingApproval} />
+          <Item to="/proposals" icon="inbox" label="Queue" />
           <Item to="/prs" icon="pr" label="Pull requests" />
           <Item to="/candidates" icon="list" label="Candidates" />
           <Item to="/audit" icon="log" label="Audit log" />

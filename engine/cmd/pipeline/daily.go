@@ -57,15 +57,18 @@ func dailyCmd(root string, args []string) int {
 	}
 
 	stage("1. watch open pull requests", func() int { return watchCmd(root, pass) })
+	// Before implement, so a proposal approved by the gate is built in the
+	// same cycle. It is a no-op while autonomy.mode is off.
+	stage("2. autonomous approval", func() int { return autoApproveCmd(root, pass) })
 	if skipImplement {
-		fmt.Println("\n=== 2. implement approved === (skipped)")
+		fmt.Println("\n=== 3. implement approved === (skipped)")
 	} else {
-		stage("2. implement approved", func() int { return implementApproved(root, execute) })
+		stage("3. implement approved", func() int { return implementApproved(root, execute) })
 	}
-	stage("3. discover", func() int { return discoverCmd(root, pass) })
-	stage("4. triage", func() int { return triageCmd(root, pass) })
-	stage("5. propose", func() int { return proposeCmd(root) })
-	stage("6. ledger", func() int { return ledgerCmd(root) })
+	stage("4. discover", func() int { return discoverCmd(root, pass) })
+	stage("5. triage", func() int { return triageCmd(root, pass) })
+	stage("6. propose", func() int { return proposeCmd(root) })
+	stage("7. ledger", func() int { return ledgerCmd(root) })
 
 	if failed > 0 {
 		fmt.Fprintf(os.Stderr, "\n%d stage(s) failed\n", failed)

@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"github.com/vimalyad/oss-pipeline/engine/internal/policy"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,10 +41,17 @@ func TestShippedProfileLoads(t *testing.T) {
 	if len(p.Domains) == 0 {
 		t.Fatal("no domains")
 	}
+	// No domain is autonomous by accident: one may sit above off only while
+	// policy.yaml carries the operator's standing authorisation, so the two
+	// files have to be changed together and on purpose.
+	cfg, err := policy.Load(realRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, d := range p.Domains {
-		if d.Autonomy != AutonomyOff {
-			t.Errorf("domain %s ships with autonomy %q; it must start off",
-				d.ID, d.Autonomy)
+		if d.Autonomy != AutonomyOff && !cfg.Policy.Autonomy.Standing() {
+			t.Errorf("domain %s ships with autonomy %q but policy.yaml autonomy.mode is %q",
+				d.ID, d.Autonomy, cfg.Policy.Autonomy.Mode)
 		}
 	}
 	t.Logf("%d domains, %d seed repos", len(p.Domains), len(p.SeedRepos()))

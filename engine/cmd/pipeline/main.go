@@ -63,6 +63,8 @@ func main() {
 		code = excludeCmd(root, os.Args[2:])
 	case "cla-signed":
 		code = claSignedCmd(root, os.Args[2:])
+	case "auto-approve":
+		code = autoApproveCmd(root, os.Args[2:])
 	case "implement":
 		code = implementCmd(root, os.Args[2:])
 	case "daily":
@@ -104,6 +106,8 @@ func usage() {
   approve   <slug>            accept a proposal for implementation
   reject    <slug> <reason>   decline one, with a reason that is kept
   retry     <slug> <reason>   put abandoned work back in the approved queue
+  auto-approve [--execute]  put waiting proposals through the autonomous gate
+                            (policy.yaml autonomy.mode: standing)
   ledger    write the contribution record
   exclude   <owner/repo>      take a repository off the table
   cla-signed <owner/repo>     record that its CLA is signed

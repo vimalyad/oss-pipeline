@@ -71,17 +71,17 @@ export function OverviewPage() {
       <section className="panel" aria-labelledby="needs-title">
         <div className="panel-head">
           <h2 id="needs-title">Needs you</h2>
-          <p className="panel-sub">Replies first, then blockers, then proposals: a maintainer waiting outranks a proposal nobody is waiting for.</p>
+          <p className="panel-sub">Maintainer replies first, then blockers. Proposals aren't here: the autonomous gate decides those.</p>
         </div>
         {needs.isPending ? (
           <Skeleton rows={3} />
         ) : needs.isError ? (
           <Failed error={needs.error} retry={() => needs.refetch()} />
-        ) : needs.data.length === 0 ? (
+        ) : needs.data.filter((n) => n.what !== "proposal").length === 0 ? (
           <Empty title="Nothing is waiting on you">The engine will notify your phone when something is.</Empty>
         ) : (
           <ul className="needs">
-            {needs.data.map((n) => {
+            {needs.data.filter((n) => n.what !== "proposal").map((n) => {
               const meta = NEED[n.what];
               const to = needLink(n);
               return (

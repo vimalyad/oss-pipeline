@@ -22,7 +22,7 @@ function Proposal({ c, detail, onDecided }: { c: CandidateSummary; detail: Candi
         </h2>
         <p className="proposal-meta">
           {c.labels.map((l) => <span key={l} className="tag">{l}</span>)}
-          <span className="muted">proposed <Time iso={c.updatedAt} /></span>
+          <span className="muted">queued <Time iso={c.updatedAt} /></span>
         </p>
       </header>
 
@@ -98,8 +98,8 @@ export function ProposalsPage() {
   return (
     <>
       <PageHead
-        title="Proposals"
-        sub="Issues that cleared every bar. Nothing is implemented, and no pull request opens, until you approve it."
+        title="Queue"
+        sub="Issues that cleared the scorer. The autonomous gate decides each one on the next daily run: it approves what clears every gate, holds what a cap is blocking, and rejects the rest with its reasons. Approve or reject here only to overrule it."
       />
       <DecidedBanner items={decided} dismiss={() => setDecided([])} />
       {list.isPending ? (
@@ -107,7 +107,7 @@ export function ProposalsPage() {
       ) : list.isError ? (
         <Failed error={list.error} retry={() => list.refetch()} />
       ) : list.data.length === 0 ? (
-        <Empty icon="inbox" title="No proposals waiting">The next discovery run will add any new ones.</Empty>
+        <Empty icon="inbox" title="The queue is empty">The gate has decided everything; the next discovery run will add more.</Empty>
       ) : (
         <div className="proposals">
           {list.data.map((c, i) => (

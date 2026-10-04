@@ -44,7 +44,7 @@ The lesson taken is not "use a database". It is **put the rule where every
 reader must obey it**. So:
 
 - `allowed_transitions` is a table and a trigger refuses any edge not in it.
-  The human gate is therefore enforced by Postgres: `proposed → implementing`
+  The approval gate is therefore enforced by Postgres: `proposed → implementing`
   fails at the database, not in application code.
 - `reopen_edges` are the only sanctioned bypasses, and a forced edge with no
   `actor` is refused.
@@ -171,9 +171,26 @@ database with the migrations applied, and skip otherwise.
   The agent also gets `--strict-mcp-config`, because without it the CLI loads
   whatever MCP servers the host has configured and an agent working inside a
   third-party clone quietly acquired browser automation.
-- **A human approves every pull request.** The autonomy path exists but is a
-  separate, labelled status, so every pull request is attributable to a person
-  or to the gate from the audit log alone.
+- **The autonomous gate approves, not a person.** Since 2026-10-04 nobody
+  approves proposals by hand: `policy.yaml` `autonomy.mode: standing` is the
+  operator's standing authorisation, and every proposal goes through
+  `internal/autogate` in the daily run (`pipeline auto-approve`). Its approvals
+  are a separate, labelled status (`auto_approved`) and an `auto_approve` audit
+  row, so every pull request is still attributable to the rule that let it
+  through. What it checks, all required:
+  - HALT, checked first; `pipeline halt` stops the next approval.
+  - Autonomous caps, ramped: 2 a day, 5 a week, 10 open.
+  - One autonomous pull request per repository until something of ours
+    merges there, and none after one is closed unmerged.
+  - A bar stricter than the manual one: no soft penalty, no pull request
+    from anyone else on the issue, an approach stated by a maintainer, and
+    a repository that does not ban automated contributions, does not
+    require an AI disclosure (which would assert a review nobody did), and
+    has no unsigned CLA.
+
+  A cap or the per-repository limit holds a proposal for the next run;
+  anything else rejects it with every reason recorded, since nobody would
+  ever come back to it. To approve by hand again, set `autonomy.mode: off`.
 
 ## Moving to another machine
 

@@ -38,7 +38,7 @@ func passing() Input {
 		},
 		Record:    DomainRecord{Merged: 4, Closed: 2},
 		Probation: Probation{MinDecided: 6, MinRate: 0.5},
-		Caps:      Caps{PerDay: 1, MaxOpen: 2, UsedToday: 0, OpenNow: 0},
+		Caps:      Caps{PerDay: 1, PerWeek: 3, MaxOpen: 2, UsedToday: 0, OpenNow: 0},
 	}
 }
 
@@ -73,6 +73,7 @@ func TestEveryGateIsLoadBearing(t *testing.T) {
 		{"merge rate too low", func(in *Input) { in.Record = DomainRecord{Merged: 2, Closed: 5} }, "merge rate"},
 		{"daily cap", func(in *Input) { in.Caps.UsedToday = 1 }, "1/1 today"},
 		{"open cap", func(in *Input) { in.Caps.OpenNow = 2 }, "2/2 open"},
+		{"weekly cap", func(in *Input) { in.Caps.UsedThisWeek = 3 }, "3/3 in 7 days"},
 		{"novelty", func(in *Input) { in.RepoHasAutoPR = true }, "already has an autonomous PR"},
 		{"still in trial", func(in *Input) { in.Grant.TrialStartedAt = now.Add(-2 * 24 * time.Hour) }, "silent trial"},
 
@@ -101,6 +102,21 @@ func TestEveryGateIsLoadBearing(t *testing.T) {
 				t.Errorf("why = %q, want it to mention %q", d.Why(), tt.want)
 			}
 		})
+	}
+}
+
+// A signed CLA removes the CLA gate and nothing else: the signature is the
+// person's step, and once it is taken there is no judgement left for a loop
+// to get wrong.
+func TestASignedCLAIsNotARefusal(t *testing.T) {
+	in := passing()
+	in.Candidate.Facts.RequiresCLA = true
+	if d := Decide(in); d.Allowed {
+		t.Fatal("allowed with an unsigned CLA")
+	}
+	in.CLASigned = true
+	if d := Decide(in); !d.Allowed {
+		t.Fatalf("refused with the CLA signed: %s", d.Why())
 	}
 }
 

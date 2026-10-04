@@ -94,9 +94,13 @@ func (d DomainRecord) Rate() float64 {
 // so a bug here cannot consume the whole allowance.
 type Caps struct {
 	PerDay    int
+	PerWeek   int
 	MaxOpen   int
 	UsedToday int
-	OpenNow   int
+	// UsedThisWeek counts autonomous approvals in the last seven days. A daily
+	// cap alone lets a quiet week's budget be spent in its last two days.
+	UsedThisWeek int
+	OpenNow      int
 }
 
 // Probation is the per-domain bar, reusing the tier-unlock thresholds.
@@ -124,6 +128,10 @@ type Input struct {
 	// RepoHasAutoPR is true when this repository has already received an
 	// autonomous pull request.
 	RepoHasAutoPR bool
+	// CLASigned is true when the user has recorded signing this repository's
+	// CLA (`pipeline cla-signed`). The signature is the one step only a person
+	// can take; once it is taken, the CLA is no longer a reason to refuse.
+	CLASigned bool
 }
 
 // Decision is the answer and the reasoning for it.
@@ -194,6 +202,10 @@ func Decide(in Input) Decision {
 		d.Blockers = append(d.Blockers, fmt.Sprintf(
 			"autonomous cap reached: %d/%d today", in.Caps.UsedToday, in.Caps.PerDay))
 	}
+	if in.Caps.UsedThisWeek >= in.Caps.PerWeek {
+		d.Blockers = append(d.Blockers, fmt.Sprintf(
+			"autonomous cap reached: %d/%d in 7 days", in.Caps.UsedThisWeek, in.Caps.PerWeek))
+	}
 	if in.Caps.OpenNow >= in.Caps.MaxOpen {
 		d.Blockers = append(d.Blockers, fmt.Sprintf(
 			"autonomous cap reached: %d/%d open", in.Caps.OpenNow, in.Caps.MaxOpen))
@@ -205,7 +217,7 @@ func Decide(in Input) Decision {
 		d.Blockers = append(d.Blockers, "this repository already has an autonomous PR")
 	}
 
-	d.Blockers = append(d.Blockers, qualityBlockers(in.Candidate)...)
+	d.Blockers = append(d.Blockers, qualityBlockers(in.Candidate, in.CLASigned)...)
 
 	d.InTrial = in.Grant.InTrial(in.Now)
 	if len(d.Blockers) == 0 {
@@ -225,7 +237,7 @@ func Decide(in Input) Decision {
 //
 // Each entry is a judgement a human makes without noticing and a loop cannot
 // make at all.
-func qualityBlockers(c *model.Candidate) []string {
+func qualityBlockers(c *model.Candidate, claSigned bool) []string {
 	if c == nil {
 		return []string{"no candidate"}
 	}
@@ -266,7 +278,7 @@ func qualityBlockers(c *model.Candidate) []string {
 			// autonomous path nobody did, so the disclosure would be false.
 			out = append(out, "the repository requires AI disclosure, which would assert a review nobody performed")
 		}
-		if c.Facts.RequiresCLA {
+		if c.Facts.RequiresCLA && !claSigned {
 			out = append(out, "the repository requires a CLA, which only a person can sign")
 		}
 	}

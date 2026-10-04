@@ -28,8 +28,36 @@ type Caps struct {
 	// Autonomous PRs get a strict subset of the overall budget, so a bug in
 	// the gate cannot consume the whole allowance.
 	AutoPRsPerDay  int `yaml:"auto_prs_per_day"`
+	AutoPRsPerWeek int `yaml:"auto_prs_per_week"`
 	MaxOpenAutoPRs int `yaml:"max_open_auto_prs"`
 }
+
+// Autonomy is the operator's standing authorisation for the pipeline to
+// approve its own proposals.
+//
+// Standing rather than a countersigned grant that expires: the operator has
+// said they will never approve proposals by hand, so an authorisation that
+// lapses without renewal would stop the pipeline silently rather than make
+// it safer. The edit to this file is the authorisation, it is re-read on
+// every run, and setting mode back to "off" or engaging HALT stops the next
+// approval.
+type Autonomy struct {
+	// Mode is "off" (every proposal waits for a person) or "standing".
+	Mode string `yaml:"mode"`
+	// Since is the date the operator switched it on, kept so the audit log
+	// can say from when.
+	Since string `yaml:"since"`
+	// Trial runs autogate's silent period from Since before acting.
+	Trial bool `yaml:"trial"`
+	// Probation is the per-domain merge record required before acting. Zero
+	// waives it, which is required when nobody approves by hand: the record
+	// could otherwise never start.
+	ProbationMinDecided int     `yaml:"probation_min_decided"`
+	ProbationMinRate    float64 `yaml:"probation_min_rate"`
+}
+
+// Standing reports whether autonomous approval is switched on.
+func (a Autonomy) Standing() bool { return a.Mode == "standing" }
 
 type Staleness struct {
 	AuthorSilentDays     int `yaml:"author_silent_days"`
@@ -55,6 +83,7 @@ type Scoring struct {
 
 type Policy struct {
 	Caps             Caps      `yaml:"caps"`
+	Autonomy         Autonomy  `yaml:"autonomy"`
 	Staleness        Staleness `yaml:"staleness"`
 	Scoring          Scoring   `yaml:"scoring"`
 	AcceptanceLabels []string  `yaml:"acceptance_labels"`

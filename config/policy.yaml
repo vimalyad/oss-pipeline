@@ -20,6 +20,26 @@ caps:
   reconsider_rejected_after_days: 7
   # The predecessor deferred 89 candidates unassessed at 12 per run.
   max_harvest_per_run: 40
+  # Autonomous approvals, a strict subset of the budget above, ramped: the
+  # first pull requests on a project are the ones maintainers judge an
+  # account by. Raise toward 4/day and 10/week once some have merged.
+  # Separately, a repository gets one autonomous pull request at a time until
+  # something of ours merges there, and none after one is closed unmerged.
+  auto_prs_per_day: 2
+  auto_prs_per_week: 5
+  max_open_auto_prs: 10
+
+# Nobody approves proposals by hand: the operator decided on 2026-10-04 that
+# every proposal is put through internal/autogate instead, live from the next
+# run with no silent trial. Every approval is audited as "autogate". To go back
+# to approving by hand, set mode to off; to stop everything, `pipeline halt`.
+autonomy:
+  mode: standing
+  since: "2026-10-04"
+  trial: false
+  # Waived: with no approvals by hand there is no record to earn it with.
+  probation_min_decided: 0
+  probation_min_rate: 0
 
 # Contest classification thresholds (days). Objective signals only.
 staleness:
