@@ -26,14 +26,19 @@ PIPELINE="$ROOT/engine/bin/pipeline"
 # At boot the timer can fire before the network or the database is up: a
 # missed 09:00 is caught up as soon as the machine is on. Wait for both rather
 # than fail a run that would have worked a minute later.
+#
+# Giving up exits 75 (EX_TEMPFAIL), which the unit retries later; any other
+# failure is not retried. A phone hotspot that is connected but passing no
+# traffic is the case this exists for: the first unattended run lost its day
+# to exactly that.
 wait_for() {
     what=$1; shift
     i=0
     until "$@" >/dev/null 2>&1; do
         i=$((i + 1))
         if [ "$i" -gt 60 ]; then
-            echo "run-daily: gave up waiting for $what after 30 minutes" >&2
-            exit 1
+            echo "run-daily: no $what after 30 minutes; will retry" >&2
+            exit 75
         fi
         sleep 30
     done

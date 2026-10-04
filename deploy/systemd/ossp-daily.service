@@ -1,6 +1,9 @@
 [Unit]
 Description=OSS pipeline: one daily cycle (watch, autonomous approval, implement, discover, triage)
 Documentation=file://%h/oss-pipeline/README.md
+# Retries are bounded: at most a day's worth of half-hourly attempts.
+StartLimitIntervalSec=24h
+StartLimitBurst=24
 
 [Service]
 Type=oneshot
@@ -12,5 +15,11 @@ ExecStart=%h/oss-pipeline/deploy/run-daily.sh
 # Implementing several approved candidates, each built and tested in a
 # container, takes hours on a slow day.
 TimeoutStartSec=6h
+# Exit 75 is run-daily.sh saying the network or database never came up. Only
+# that is retried: a failing doctor or a failed stage waits for a person or
+# for tomorrow, rather than repeating a cycle that publishes.
+RestartForceExitStatus=75
+RestartSec=30min
+SuccessExitStatus=0
 Nice=10
 IOSchedulingClass=idle

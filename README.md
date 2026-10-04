@@ -125,6 +125,9 @@ pipeline halt "<reason>"                         # stop it; `resume` to lift
 
 The runner waits for the network and the database, rebuilds the engine if
 the source changed, and refuses to start past a failing `pipeline doctor`.
+If the network or database is still missing after 30 minutes it exits 75 and
+systemd retries half-hourly, up to a day's worth; any other failure is not
+retried, because the cycle publishes.
 Before login the desktop keyring is locked, so the token is read from
 `config/gh-token` (mode 600, gitignored; Token refuses it if anyone else can
 read it), and Wi-Fi has to be a connection stored for all users.
