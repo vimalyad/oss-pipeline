@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vimalyad/oss-pipeline/engine/internal/audit"
 	"github.com/vimalyad/oss-pipeline/engine/internal/ghx"
 	"github.com/vimalyad/oss-pipeline/engine/internal/halt"
 	"github.com/vimalyad/oss-pipeline/engine/internal/identity"
@@ -17,7 +16,6 @@ import (
 	"github.com/vimalyad/oss-pipeline/engine/internal/model"
 	"github.com/vimalyad/oss-pipeline/engine/internal/replies"
 	"github.com/vimalyad/oss-pipeline/engine/internal/repo"
-	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 	"github.com/vimalyad/oss-pipeline/engine/internal/text"
 )
 
@@ -72,7 +70,7 @@ type queueItem struct {
 	index int
 }
 
-func pendingQueue(st *store.Store) []queueItem {
+func pendingQueue(st candidateStore) []queueItem {
 	var out []queueItem
 	for _, c := range st.ByStatus(model.OpenStatuses...) {
 		for _, i := range replies.Pending(c) {
@@ -83,7 +81,11 @@ func pendingQueue(st *store.Store) []queueItem {
 }
 
 func repliesList(root string) int {
-	q := pendingQueue(store.New(root))
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	q := pendingQueue(st)
 	if len(q) == 0 {
 		fmt.Println("no replies queued")
 		return 0
@@ -144,7 +146,10 @@ func repliesDraft(root string, args []string) int {
 	env := identity.Env(id, token)
 	brain := llm.New(env)
 	rm := &repo.Manager{Root: root, ID: id, Env: env, Log: say}
-	st := store.New(root)
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
 
 	ctx := context.Background()
 	done := 0
@@ -224,7 +229,10 @@ func repliesPost(root string, args []string) int {
 		return 1
 	}
 
-	st := store.New(root)
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
 	c, err := st.Load(slug)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -259,7 +267,7 @@ func repliesPost(root string, args []string) int {
 		fmt.Fprintln(os.Stderr, "the reply WAS posted at", url, "but saving failed:", err)
 		return 1
 	}
-	_ = audit.New(root).Record("reply_posted", c.Slug(), url)
+	_ = openAudit(root).Record("reply_posted", c.Slug(), url)
 	fmt.Println("posted", url)
 	return 0
 }

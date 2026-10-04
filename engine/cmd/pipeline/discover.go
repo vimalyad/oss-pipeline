@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/vimalyad/oss-pipeline/engine/internal/audit"
 	"github.com/vimalyad/oss-pipeline/engine/internal/discover"
 	"github.com/vimalyad/oss-pipeline/engine/internal/ghx"
 	"github.com/vimalyad/oss-pipeline/engine/internal/halt"
@@ -16,7 +15,6 @@ import (
 	"github.com/vimalyad/oss-pipeline/engine/internal/policy"
 	"github.com/vimalyad/oss-pipeline/engine/internal/profile"
 	"github.com/vimalyad/oss-pipeline/engine/internal/sources"
-	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 )
 
 // discoverCmd sweeps the watchlist for candidate issues.
@@ -60,7 +58,10 @@ func discoverCmd(root string, args []string) int {
 		return 1
 	}
 	gh := ghx.New(identity.Env(id, token))
-	st := store.New(root)
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
 
 	// The sweep order comes from the domain weights, so a weight-3 domain gets
 	// three times the share of the pass. Excluded repositories are dropped
@@ -96,7 +97,7 @@ func discoverCmd(root string, args []string) int {
 		fmt.Println("\n[dry run] nothing was written; run with --execute to record these candidates")
 		return 0
 	}
-	log := audit.New(root)
+	log := openAudit(root)
 	written := 0
 	for _, f := range res.Found {
 		c := f.Candidate

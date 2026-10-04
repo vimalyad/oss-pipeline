@@ -21,7 +21,6 @@ import (
 	"github.com/vimalyad/oss-pipeline/engine/internal/model"
 	"github.com/vimalyad/oss-pipeline/engine/internal/policy"
 	"github.com/vimalyad/oss-pipeline/engine/internal/score"
-	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 )
 
 func main() {
@@ -78,6 +77,8 @@ func main() {
 		code = discoverCmd(root, os.Args[2:])
 	case "triage":
 		code = triageCmd(root, os.Args[2:])
+	case "import-json":
+		code = importJSONCmd(root, os.Args[2:])
 	default:
 		usage()
 		code = 2
@@ -112,6 +113,11 @@ func usage() {
   watch     [--execute]       one cycle over every open pull request
   replies   [list|draft|post] read, write and send answers to maintainers
   report    [--publish]       the status page, optionally mirrored to a gist
+
+  import-json [--execute]     copy state/ into the database named by DATABASE_URL,
+                              history and all; safe to rerun
+
+  DATABASE_URL set means every command reads and writes Postgres instead of state/.
 `)
 }
 
@@ -172,7 +178,14 @@ func doctor(root string) int {
 	}
 
 	// --- stored state ---------------------------------------------------
-	s := store.New(root)
+	// Which store is named outright: the dashboard reads Postgres only, so a
+	// run that is quietly on files looks like a pipeline that does nothing.
+	s, err := openStore(root)
+	if err != nil {
+		fmt.Printf("store           FAIL  %v\n", err)
+		return 1
+	}
+	fmt.Printf("store           ok    %s\n", backendName(s))
 	cands, bad := s.All()
 	fmt.Printf("candidates      %-5s %d loaded, %d unreadable\n",
 		okIf(len(bad) == 0), len(cands), len(bad))
@@ -283,7 +296,11 @@ func machineCmd(root string) int {
 	fmt.Print(p.Summary())
 	fmt.Printf("capabilities: %v\n\n", p.Capabilities)
 
-	cands, _ := store.New(root).All()
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	cands, _ := st.All()
 	type row struct {
 		slug, lane, reason string
 		reject, host       bool
@@ -340,7 +357,11 @@ func machineCmd(root string) int {
 // Python implementation's, so the two can be diffed during the port -- that
 // comparison is the safety net for the whole rewrite.
 func status(root string) int {
-	cands, bad := store.New(root).All()
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	cands, bad := st.All()
 	counts := map[model.Status]int{}
 	for _, c := range cands {
 		counts[c.Status]++
@@ -416,7 +437,10 @@ func rescore(root string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-	st := store.New(root)
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
 	cands, _ := st.All()
 	sort.Slice(cands, func(i, j int) bool { return cands[i].Slug() < cands[j].Slug() })
 

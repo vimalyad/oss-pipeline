@@ -72,6 +72,22 @@ type State struct {
 	UpdatedAt string
 	HeadSHA   string
 
+	// What the dashboard shows and the cycle itself does not need. Fetched
+	// in the same query because a second round trip per pull request per
+	// hour is the API budget this pipeline is careful with elsewhere.
+	Title          string
+	HeadBranch     string
+	BaseBranch     string
+	ReviewDecision string // GitHub's own: APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED or empty
+	Reviewers      int    // distinct people who have left a review
+	Additions      int
+	Deletions      int
+	ChangedFiles   int
+	MergedAt       string
+	ClosedAt       string
+	ChecksTotal    int
+	ChecksPending  int
+
 	Failing []Check
 	// Awaiting are checks held at ACTION_REQUIRED. GitHub holds workflow runs
 	// from first-time contributors until a maintainer approves them: not a
@@ -101,6 +117,8 @@ query($owner:String!, $name:String!, $number:Int!) {
   repository(owner:$owner, name:$name) {
     pullRequest(number:$number) {
       number url state merged isDraft mergeable updatedAt
+      title headRefName baseRefName reviewDecision author { login }
+      additions deletions changedFiles mergedAt closedAt
       commits(last:1) {
         nodes { commit {
           oid
@@ -109,7 +127,7 @@ query($owner:String!, $name:String!, $number:Int!) {
             contexts(first:60) {
               nodes {
                 __typename
-                ... on CheckRun { name conclusion detailsUrl }
+                ... on CheckRun { name status conclusion detailsUrl }
                 ... on StatusContext { context state targetUrl }
               }
             }
@@ -137,7 +155,19 @@ type prResponse struct {
 			IsDraft   bool   `json:"isDraft"`
 			Mergeable string `json:"mergeable"`
 			UpdatedAt string `json:"updatedAt"`
-			Commits   struct {
+
+			Title          string  `json:"title"`
+			HeadRefName    string  `json:"headRefName"`
+			BaseRefName    string  `json:"baseRefName"`
+			ReviewDecision string  `json:"reviewDecision"`
+			Author         *author `json:"author"`
+			Additions      int     `json:"additions"`
+			Deletions      int     `json:"deletions"`
+			ChangedFiles   int     `json:"changedFiles"`
+			MergedAt       string  `json:"mergedAt"`
+			ClosedAt       string  `json:"closedAt"`
+
+			Commits struct {
 				Nodes []struct {
 					Commit struct {
 						OID               string `json:"oid"`
@@ -147,6 +177,7 @@ type prResponse struct {
 								Nodes []struct {
 									Typename   string `json:"__typename"`
 									Name       string `json:"name"`
+									Status     string `json:"status"`
 									Conclusion string `json:"conclusion"`
 									DetailsURL string `json:"detailsUrl"`
 									Context    string `json:"context"`
@@ -224,14 +255,22 @@ func Poll(ctx context.Context, api API, c *model.Candidate) (State, error) {
 	st := State{
 		Number: pr.Number, URL: pr.URL, State: pr.State, Merged: pr.Merged,
 		IsDraft: pr.IsDraft, Mergeable: pr.Mergeable, UpdatedAt: pr.UpdatedAt,
+		Title: pr.Title, HeadBranch: pr.HeadRefName, BaseBranch: pr.BaseRefName,
+		ReviewDecision: pr.ReviewDecision, Additions: pr.Additions,
+		Deletions: pr.Deletions, ChangedFiles: pr.ChangedFiles,
+		MergedAt: pr.MergedAt, ClosedAt: pr.ClosedAt,
 	}
 	if len(pr.Commits.Nodes) > 0 {
 		commit := pr.Commits.Nodes[0].Commit
 		st.HeadSHA = commit.OID
 		if commit.StatusCheckRollup != nil {
 			for _, ctxNode := range commit.StatusCheckRollup.Contexts.Nodes {
+				st.ChecksTotal++
 				switch ctxNode.Typename {
 				case "CheckRun":
+					if ctxNode.Status != "" && ctxNode.Status != "COMPLETED" {
+						st.ChecksPending++
+					}
 					switch ctxNode.Conclusion {
 					case "FAILURE", "TIMED_OUT", "CANCELLED":
 						st.Failing = append(st.Failing, Check{ctxNode.Name, ctxNode.DetailsURL})
@@ -239,6 +278,9 @@ func Poll(ctx context.Context, api API, c *model.Candidate) (State, error) {
 						st.Awaiting = append(st.Awaiting, Check{ctxNode.Name, ctxNode.DetailsURL})
 					}
 				case "StatusContext":
+					if ctxNode.State == "PENDING" || ctxNode.State == "EXPECTED" {
+						st.ChecksPending++
+					}
 					if ctxNode.State == "FAILURE" || ctxNode.State == "ERROR" {
 						st.Failing = append(st.Failing, Check{ctxNode.Context, ctxNode.TargetURL})
 					}
@@ -248,8 +290,14 @@ func Poll(ctx context.Context, api API, c *model.Candidate) (State, error) {
 	}
 
 	seen := seenSet(c)
+	reviewers := map[string]bool{}
 	for _, rv := range pr.Reviews.Nodes {
 		who := rv.Author.login()
+		// The author answering an inline thread creates a review of their
+		// own; counting it would make every pull request look reviewed.
+		if pr.Author == nil || who != pr.Author.login() {
+			reviewers[who] = true
+		}
 		if !seen[rv.ID] && strings.TrimSpace(rv.Body) != "" {
 			st.Items = append(st.Items, Item{
 				ID: rv.ID, Author: who, Kind: "review " + rv.State, Body: rv.Body,
@@ -265,6 +313,7 @@ func Poll(ctx context.Context, api API, c *model.Candidate) (State, error) {
 			})
 		}
 	}
+	st.Reviewers = len(reviewers)
 	for _, cm := range pr.Comments.Nodes {
 		if seen[cm.ID] {
 			continue

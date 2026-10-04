@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vimalyad/oss-pipeline/engine/internal/audit"
 	"github.com/vimalyad/oss-pipeline/engine/internal/brief"
 	"github.com/vimalyad/oss-pipeline/engine/internal/contest"
 	"github.com/vimalyad/oss-pipeline/engine/internal/ghx"
@@ -20,7 +19,6 @@ import (
 	"github.com/vimalyad/oss-pipeline/engine/internal/policy"
 	"github.com/vimalyad/oss-pipeline/engine/internal/repofacts"
 	"github.com/vimalyad/oss-pipeline/engine/internal/score"
-	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 )
 
 // triageCmd takes what discover found and decides what to put in front of a
@@ -72,8 +70,11 @@ func triageCmd(root string, args []string) int {
 	env := identity.Env(id, token)
 	gh := ghx.New(env)
 	brain := llm.New(env)
-	st := store.New(root)
-	log := audit.New(root)
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	log := openAudit(root)
 
 	queue := st.ByStatus(model.StatusDiscovered)
 	if len(queue) == 0 {

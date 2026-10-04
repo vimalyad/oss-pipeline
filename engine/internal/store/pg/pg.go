@@ -10,6 +10,7 @@ package pg
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vimalyad/oss-pipeline/engine/internal/model"
+	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 )
 
 var (
@@ -29,6 +31,13 @@ var (
 	// caller that already distinguishes "our ordering is wrong" from "the
 	// network blipped" keeps working unchanged.
 	ErrIllegalTransition = model.ErrIllegalTransition
+	// ErrStale means the database moved on since this copy was loaded --
+	// almost always a person approving or rejecting through the dashboard
+	// while a sweep held the candidate in memory. The engine's copy loses:
+	// writing it would put back a status a human just changed, which is the
+	// exact failure that destroyed sixteen decisions in the predecessor, now
+	// with two services instead of two binaries.
+	ErrStale = fmt.Errorf("%w: stale write", ErrStore)
 )
 
 type Store struct {
@@ -102,21 +111,31 @@ func (s *Store) LoadRepoFacts(repo string) (*model.RepoFacts, error) {
 	ctx := context.Background()
 	var f model.RepoFacts
 	var fetched *time.Time
+	var full []byte
 	err := s.pool.QueryRow(ctx, `
 		SELECT full_name, coalesce(stars,0), coalesce(has_contributing,false),
 		       coalesce(bans_ai_prs,false), coalesce(requires_ai_disclosure,false),
 		       coalesce(ai_policy_quote,''), coalesce(requires_dco,false),
 		       coalesce(requires_cla,false), coalesce(has_tests,false),
-		       coalesce(primary_language,''), topics, facts_fetched_at
+		       coalesce(primary_language,''), topics, facts_fetched_at, facts
 		  FROM repos WHERE full_name = $1 AND facts_fetched_at IS NOT NULL`, repo).Scan(
 		&f.Repo, &f.Stars, &f.HasContributing, &f.BansAIPRs, &f.RequiresAIDisclosure,
 		&f.AIPolicyQuote, &f.RequiresDCO, &f.RequiresCLA, &f.HasTests,
-		&f.PrimaryLanguage, &f.Topics, &fetched)
+		&f.PrimaryLanguage, &f.Topics, &fetched, &full)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: facts %s: %v", ErrStore, repo, err)
+	}
+	// The whole record when it was stored, because the columns do not cover
+	// the eligibility rules; the columns alone for rows written before 0005.
+	if len(full) > 0 && string(full) != "null" {
+		var whole model.RepoFacts
+		if err := json.Unmarshal(full, &whole); err != nil {
+			return nil, fmt.Errorf("%w: facts %s: %v", ErrStore, repo, err)
+		}
+		f = whole
 	}
 	if fetched != nil {
 		f.FetchedAt = fetched.UTC().Format(time.RFC3339)
@@ -124,15 +143,25 @@ func (s *Store) LoadRepoFacts(repo string) (*model.RepoFacts, error) {
 	return &f, nil
 }
 
+// SaveRepoFacts writes the repository cache. The fetch time is the record's
+// own when it has one, so an import does not make a month-old cache look
+// fresh and suppress the weekly refetch.
 func (s *Store) SaveRepoFacts(f *model.RepoFacts) error {
+	if f == nil || f.Repo == "" {
+		return fmt.Errorf("%w: facts with no repo", ErrStore)
+	}
 	ctx := context.Background()
 	owner, _, _ := strings.Cut(f.Repo, "/")
-	_, err := s.pool.Exec(ctx, `
+	full, err := json.Marshal(f)
+	if err != nil {
+		return fmt.Errorf("%w: facts %s: %v", ErrStore, f.Repo, err)
+	}
+	_, err = s.pool.Exec(ctx, `
 		INSERT INTO repos (full_name, owner, stars, has_contributing, bans_ai_prs,
 		                   requires_ai_disclosure, ai_policy_quote, requires_dco,
 		                   requires_cla, has_tests, primary_language, topics,
-		                   facts_fetched_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
+		                   facts_fetched_at, facts)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, coalesce($13, now()), $14)
 		ON CONFLICT (full_name) DO UPDATE SET
 		  stars = EXCLUDED.stars,
 		  has_contributing = EXCLUDED.has_contributing,
@@ -144,10 +173,11 @@ func (s *Store) SaveRepoFacts(f *model.RepoFacts) error {
 		  has_tests = EXCLUDED.has_tests,
 		  primary_language = EXCLUDED.primary_language,
 		  topics = EXCLUDED.topics,
-		  facts_fetched_at = now()`,
+		  facts_fetched_at = EXCLUDED.facts_fetched_at,
+		  facts = EXCLUDED.facts`,
 		f.Repo, owner, f.Stars, f.HasContributing, f.BansAIPRs, f.RequiresAIDisclosure,
-		f.AIPolicyQuote, f.RequiresDCO, f.RequiresCLA, f.HasTests,
-		f.PrimaryLanguage, arr(f.Topics))
+		nullStr(f.AIPolicyQuote), f.RequiresDCO, f.RequiresCLA, f.HasTests,
+		nullStr(f.PrimaryLanguage), arr(f.Topics), nullTime(f.FetchedAt), full)
 	if err != nil {
 		return fmt.Errorf("%w: save facts %s: %v", ErrStore, f.Repo, err)
 	}
@@ -164,7 +194,9 @@ const candidateColumns = `
 	c.issue_created_at, c.issue_updated_at,
 	c.contest, c.linked_prs,
 	coalesce(c.reject_reason, ''), c.soft_penalties, c.blockers, c.score_failures,
-	coalesce(c.branch, ''), c.took_over, coalesce(c.credits, '')`
+	coalesce(c.branch, ''), c.took_over, coalesce(c.credits, ''),
+	c.pr_number, coalesce(c.pr_url, ''), c.watch_seen, c.queued_replies,
+	c.disclosed_ai, c.facts`
 
 func scanCandidate(row pgx.Row) (*model.Candidate, int64, error) {
 	var (
@@ -172,13 +204,33 @@ func scanCandidate(row pgx.Row) (*model.Candidate, int64, error) {
 		c                model.Candidate
 		created, updated *time.Time
 		contest          string
+		queued, facts    []byte
 	)
 	err := row.Scan(&id, &c.Repo, &c.Issue, &c.Title, &c.URL, &c.Status,
 		&c.Labels, &c.Comments, &c.Reactions, &created, &updated,
 		&contest, &c.LinkedPRs, &c.RejectReason, &c.SoftPenalties,
-		&c.Blockers, &c.ScoreFailures, &c.Branch, &c.TookOver, &c.Credits)
+		&c.Blockers, &c.ScoreFailures, &c.Branch, &c.TookOver, &c.Credits,
+		&c.PRNumber, &c.PRURL, &c.WatchSeen, &queued, &c.DisclosedAI, &facts)
 	if err != nil {
 		return nil, 0, err
+	}
+	// The two JSON columns hold the engine's own shapes verbatim. A decode
+	// failure is an error rather than an empty value: an empty reply queue
+	// reads as "nothing waiting on you", which is the one wrong answer.
+	if len(queued) > 0 {
+		if err := json.Unmarshal(queued, &c.QueuedReplies); err != nil {
+			return nil, 0, fmt.Errorf("queued_replies: %v", err)
+		}
+		if len(c.QueuedReplies) == 0 {
+			c.QueuedReplies = nil
+		}
+	}
+	if len(facts) > 0 && string(facts) != "null" {
+		var f model.RepoFacts
+		if err := json.Unmarshal(facts, &f); err != nil {
+			return nil, 0, fmt.Errorf("facts: %v", err)
+		}
+		c.Facts = &f
 	}
 	c.Contest = model.Contest(contest)
 	if c.Contest == "unknown" {
@@ -286,6 +338,14 @@ func (s *Store) attach(ctx context.Context, id int64, c *model.Candidate) error 
 // fails here instead of being written down. That is the inversion worth
 // having -- the predecessor checked the state machine in application code,
 // which meant a second writer of the same files obeyed nothing at all.
+//
+// There is a second writer now. The dashboard approves and rejects by writing
+// the status and a history row directly, so this copy of the candidate may be
+// older than the row. The check is on history rather than on a timestamp:
+// every status change is a history row, so if the stored history is not a
+// prefix of ours, someone else moved the candidate and this write is refused
+// with ErrStale. The row is locked first so the check and the write see the
+// same thing.
 func (s *Store) Save(c *model.Candidate) (string, error) {
 	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
@@ -293,6 +353,11 @@ func (s *Store) Save(c *model.Candidate) (string, error) {
 		return "", fmt.Errorf("%w: %v", ErrStore, err)
 	}
 	defer tx.Rollback(ctx)
+
+	have, err := checkFresh(ctx, tx, c)
+	if err != nil {
+		return "", err
+	}
 
 	repoID, err := s.repoID(ctx, tx, c.Repo)
 	if err != nil {
@@ -303,34 +368,76 @@ func (s *Store) Save(c *model.Candidate) (string, error) {
 		contest = "unknown"
 	}
 	kind, reason := rejection(c)
+	var rejectedAt *time.Time
+	if kind != nil {
+		// From the candidate's own history when it has one, so an import
+		// keeps the date the reconsider cooldown is measured from. now() would
+		// restart every cooldown on the day of the migration.
+		if t, ok := store.RejectedAt(c); ok {
+			rejectedAt = &t
+		} else {
+			now := time.Now()
+			rejectedAt = &now
+		}
+	}
+	queued, err := json.Marshal(arr(c.QueuedReplies))
+	if err != nil {
+		return "", fmt.Errorf("%w: %s: queued replies: %v", ErrStore, c.Slug(), err)
+	}
+	var facts []byte
+	if c.Facts != nil {
+		if facts, err = json.Marshal(c.Facts); err != nil {
+			return "", fmt.Errorf("%w: %s: facts: %v", ErrStore, c.Slug(), err)
+		}
+	}
 
 	var id int64
 	err = tx.QueryRow(ctx, `
 		INSERT INTO candidates (repo_id, issue_number, slug, title, url, status,
 		  labels, comment_count, reaction_count, issue_created_at, issue_updated_at,
 		  contest, linked_prs, reject_kind, reject_reason, rejected_at,
-		  soft_penalties, blockers, score_failures, branch, took_over, credits)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-		        CASE WHEN $14::rejection_kind IS NULL THEN NULL ELSE now() END,
-		        $16,$17,$18,$19,$20,$21)
+		  soft_penalties, blockers, score_failures, branch, took_over, credits,
+		  pr_number, pr_url, watch_seen, queued_replies, disclosed_ai, facts)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+		        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
 		ON CONFLICT (slug) DO UPDATE SET
 		  title = EXCLUDED.title, url = EXCLUDED.url, status = EXCLUDED.status,
 		  labels = EXCLUDED.labels, comment_count = EXCLUDED.comment_count,
 		  reaction_count = EXCLUDED.reaction_count,
 		  issue_updated_at = EXCLUDED.issue_updated_at,
 		  contest = EXCLUDED.contest, linked_prs = EXCLUDED.linked_prs,
-		  reject_kind = EXCLUDED.reject_kind, reject_reason = EXCLUDED.reject_reason,
-		  rejected_at = coalesce(candidates.rejected_at, EXCLUDED.rejected_at),
+		  -- A human rejection stays human. The dashboard need not phrase its
+		  -- reason the way the classifier expects, and a re-save by a sweep
+		  -- must not turn a person's decision into a machine one that expires.
+		  reject_kind = CASE
+		      WHEN EXCLUDED.status = 'rejected' AND candidates.reject_kind = 'human'
+		      THEN 'human'::rejection_kind
+		      ELSE EXCLUDED.reject_kind END,
+		  -- And keeps the person's words. The dashboard can turn a scorer's
+		  -- rejection into a human one without a history edge, so an engine
+		  -- copy loaded before that still carries the scorer's reason; only a
+		  -- reason that is itself human may replace a human one.
+		  reject_reason = CASE
+		      WHEN EXCLUDED.status = 'rejected' AND candidates.reject_kind = 'human'
+		           AND EXCLUDED.reject_kind IS DISTINCT FROM 'human'
+		      THEN candidates.reject_reason
+		      ELSE EXCLUDED.reject_reason END,
+		  rejected_at = CASE WHEN EXCLUDED.reject_kind IS NULL THEN NULL
+		      ELSE coalesce(candidates.rejected_at, EXCLUDED.rejected_at) END,
 		  soft_penalties = EXCLUDED.soft_penalties, blockers = EXCLUDED.blockers,
 		  score_failures = EXCLUDED.score_failures, branch = EXCLUDED.branch,
 		  took_over = EXCLUDED.took_over, credits = EXCLUDED.credits,
+		  pr_number = EXCLUDED.pr_number, pr_url = EXCLUDED.pr_url,
+		  watch_seen = EXCLUDED.watch_seen, queued_replies = EXCLUDED.queued_replies,
+		  disclosed_ai = EXCLUDED.disclosed_ai, facts = EXCLUDED.facts,
 		  updated_at = now()
 		RETURNING id`,
 		repoID, c.Issue, c.Slug(), c.Title, c.URL, string(c.Status),
 		arr(c.Labels), c.Comments, c.Reactions, nullTime(c.IssueCreatedAt), nullTime(c.IssueUpdatedAt),
-		contest, arr(c.LinkedPRs), kind, nullStr(reason),
+		contest, arr(c.LinkedPRs), kind, nullStr(reason), rejectedAt,
 		arr(c.SoftPenalties), arr(c.Blockers), arr(c.ScoreFailures), nullStr(c.Branch),
-		c.TookOver, nullStr(c.Credits)).Scan(&id)
+		c.TookOver, nullStr(c.Credits),
+		c.PRNumber, nullStr(c.PRURL), arr(c.WatchSeen), queued, c.DisclosedAI, facts).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("%w: save %s: %v", ErrStore, c.Slug(), err)
 	}
@@ -342,14 +449,7 @@ func (s *Store) Save(c *model.Candidate) (string, error) {
 		return "", err
 	}
 
-	// Append only the entries the database does not have. History is
-	// append-only by construction, so a count is a safe watermark.
-	var have int
-	if err := tx.QueryRow(ctx,
-		`SELECT count(*) FROM candidate_history WHERE candidate_id = $1`, id).Scan(&have); err != nil {
-		return "", fmt.Errorf("%w: %v", ErrStore, err)
-	}
-	for _, h := range c.History[min(have, len(c.History)):] {
+	for _, h := range c.History[have:] {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO candidate_history (candidate_id, from_status, to_status,
 			                               note, forced, actor, at)
@@ -367,10 +467,74 @@ func (s *Store) Save(c *model.Candidate) (string, error) {
 			return "", fmt.Errorf("%w: history %s: %v", ErrStore, c.Slug(), err)
 		}
 	}
+	if err := syncPR(ctx, tx, id, repoID, c); err != nil {
+		return "", err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("%w: commit %s: %v", ErrStore, c.Slug(), err)
 	}
 	return c.Slug(), nil
+}
+
+// checkFresh locks the candidate's row and confirms this copy is not behind
+// it, returning how many of its history entries the database already has.
+//
+// Entries are compared on their edge, not their timestamp: the file store
+// wrote one layout and the database returns another, and an edge is what
+// identifies a decision. A new candidate has nothing to be stale against.
+func checkFresh(ctx context.Context, tx pgx.Tx, c *model.Candidate) (int, error) {
+	var (
+		id     int64
+		status string
+	)
+	err := tx.QueryRow(ctx,
+		`SELECT id, status FROM candidates WHERE slug = $1 FOR UPDATE`,
+		c.Slug()).Scan(&id, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("%w: lock %s: %v", ErrStore, c.Slug(), err)
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT coalesce(from_status::text, ''), to_status::text, forced
+		  FROM candidate_history WHERE candidate_id = $1 ORDER BY id`, id)
+	if err != nil {
+		return 0, fmt.Errorf("%w: history %s: %v", ErrStore, c.Slug(), err)
+	}
+	var stored []model.HistoryEntry
+	for rows.Next() {
+		var h model.HistoryEntry
+		if err := rows.Scan(&h.From, &h.To, &h.Forced); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("%w: history %s: %v", ErrStore, c.Slug(), err)
+		}
+		stored = append(stored, h)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("%w: history %s: %v", ErrStore, c.Slug(), err)
+	}
+
+	if len(stored) > len(c.History) {
+		return 0, fmt.Errorf("%w: %s: the database has %d history entries, this copy %d; "+
+			"it is now %s", ErrStale, c.Slug(), len(stored), len(c.History), status)
+	}
+	for i, h := range stored {
+		mine := c.History[i]
+		if h.From != mine.From || h.To != mine.To || h.Forced != mine.Forced {
+			return 0, fmt.Errorf("%w: %s: history[%d] is %s->%s in the database, %s->%s here",
+				ErrStale, c.Slug(), i, h.From, h.To, mine.From, mine.To)
+		}
+	}
+	// Same history, different status: the status moved without an edge,
+	// which only a writer outside the state machine can do. Refuse rather
+	// than pick a winner.
+	if len(stored) == len(c.History) && model.Status(status) != c.Status {
+		return 0, fmt.Errorf("%w: %s: status is %s in the database and %s here with no edge between",
+			ErrStale, c.Slug(), status, c.Status)
+	}
+	return len(stored), nil
 }
 
 func saveBrief(ctx context.Context, tx pgx.Tx, id int64, c *model.Candidate) error {
@@ -444,11 +608,9 @@ func (s *Store) All() ([]*model.Candidate, []LoadResult) {
 	return cs, nil
 }
 
-// LoadResult reports a candidate that could not be read.
-type LoadResult struct {
-	Slug string
-	Err  error
-}
+// LoadResult is the file store's type, so every consumer that already names
+// it accepts either store without an adapter.
+type LoadResult = store.LoadResult
 
 func (s *Store) ByStatus(want ...model.Status) []*model.Candidate {
 	if len(want) == 0 {

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/vimalyad/oss-pipeline/engine/internal/audit"
 	"github.com/vimalyad/oss-pipeline/engine/internal/cilog"
 	"github.com/vimalyad/oss-pipeline/engine/internal/ghx"
 	"github.com/vimalyad/oss-pipeline/engine/internal/halt"
@@ -16,7 +15,6 @@ import (
 	"github.com/vimalyad/oss-pipeline/engine/internal/notify"
 	"github.com/vimalyad/oss-pipeline/engine/internal/policy"
 	"github.com/vimalyad/oss-pipeline/engine/internal/profile"
-	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 	"github.com/vimalyad/oss-pipeline/engine/internal/watch"
 )
 
@@ -43,7 +41,10 @@ func watchCmd(root string, args []string) int {
 	}
 
 	ctx := context.Background()
-	st := store.New(root)
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
 	open := st.ByStatus(model.OpenStatuses...)
 	if len(open) == 0 {
 		fmt.Println("no open pull requests")
@@ -75,7 +76,8 @@ func watchCmd(root string, args []string) int {
 	}
 	note := notifier(root, prof)
 
-	log := audit.New(root)
+	log := openAudit(root)
+	observe := prObserver(st)
 	problems := 0
 	for _, c := range open {
 		d := watch.Deps{
@@ -103,6 +105,8 @@ func watchCmd(root string, args []string) int {
 			// reports and queues but never pushes, which is the correct
 			// behaviour to ship first.
 			StaleAfterDays: cfg.Policy.Staleness.PRUntouchedDays,
+			// The dashboard's per-PR view, when the store keeps one.
+			Observe: observe,
 		}
 		out, err := watch.Sync(ctx, d, c, execute)
 		if err != nil {

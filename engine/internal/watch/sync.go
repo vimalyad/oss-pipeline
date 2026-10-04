@@ -38,6 +38,11 @@ type Deps struct {
 	// StaleAfterDays marks a PR stale when nothing has happened for this long.
 	// Zero disables it.
 	StaleAfterDays int
+	// Observe receives every successful poll, after the cycle has settled the
+	// candidate's status, so a store that keeps a per-PR view (the
+	// dashboard's) can record it. Nil when the store has no such view. A
+	// failure here is reported, never fatal: the cycle's real work is done.
+	Observe func(c *model.Candidate, st State) error
 }
 
 // Outcome is what one cycle did, in the form a digest line wants.
@@ -83,6 +88,7 @@ func Sync(ctx context.Context, d Deps, c *model.Candidate, execute bool) (Outcom
 		}
 		d.record("merged", c.Slug(), c.PRURL)
 		d.send(notify.Merged(c.Slug(), c.Repo, c.Issue, c.PRURL))
+		d.observe(c, st)
 		d.save(c)
 		return Outcome{Status: c.Status, Summary: "MERGED", State: st}, nil
 	}
@@ -92,6 +98,7 @@ func Sync(ctx context.Context, d Deps, c *model.Candidate, execute bool) (Outcom
 		}
 		d.record("closed", c.Slug(), c.PRURL)
 		d.send(notify.Closed(c.Slug(), c.Repo, c.Issue, c.PRURL))
+		d.observe(c, st)
 		d.save(c)
 		return Outcome{Status: c.Status, Summary: "closed without merge", State: st}, nil
 	}
@@ -156,6 +163,7 @@ func Sync(ctx context.Context, d Deps, c *model.Candidate, execute bool) (Outcom
 			c.WatchSeen = append(c.WatchSeen, it.ID)
 		}
 	}
+	d.observe(c, st)
 	d.save(c)
 
 	out.Status = c.Status
@@ -188,6 +196,15 @@ func (d Deps) save(c *model.Candidate) {
 	}
 	if _, err := d.Store.Save(c); err != nil {
 		d.record("save_failed", c.Slug(), err.Error())
+	}
+}
+
+func (d Deps) observe(c *model.Candidate, st State) {
+	if d.Observe == nil {
+		return
+	}
+	if err := d.Observe(c, st); err != nil {
+		d.record("observe_failed", c.Slug(), err.Error())
 	}
 }
 

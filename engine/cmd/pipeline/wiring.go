@@ -26,6 +26,7 @@ import (
 	"github.com/vimalyad/oss-pipeline/engine/internal/repofacts"
 	"github.com/vimalyad/oss-pipeline/engine/internal/sandbox"
 	"github.com/vimalyad/oss-pipeline/engine/internal/store"
+	"github.com/vimalyad/oss-pipeline/engine/internal/store/pg"
 	"github.com/vimalyad/oss-pipeline/engine/internal/submit"
 	"github.com/vimalyad/oss-pipeline/engine/internal/toolchain"
 	"github.com/vimalyad/oss-pipeline/engine/internal/watch"
@@ -47,6 +48,7 @@ var (
 	_ watch.API             = (*ghx.Client)(nil)
 	_ watch.CheckClassifier = (*cilog.Fetcher)(nil)
 	_ watch.Saver           = (*store.Store)(nil)
+	_ watch.Saver           = (*pg.Store)(nil)
 	_ replies.Drafter       = (*llm.Client)(nil)
 	_ brief.Judge           = (*llm.Client)(nil)
 	_ implement.Agent       = (*llm.Client)(nil)
@@ -62,12 +64,15 @@ var (
 	_ harvest.API           = (*ghx.Client)(nil)
 	_ propose.Domains       = (*profile.Profile)(nil)
 	_ gate.Store            = (*store.Store)(nil)
+	_ gate.Store            = (*pg.Store)(nil)
+	_ gate.Auditor          = teeAudit{}
 	_ gate.Auditor          = (*audit.Log)(nil)
 	_ publish.API           = (*ghx.Client)(nil)
 	_ cilog.API             = cilogAPI{}
 	_ repofacts.API         = plainGet{}
 	_ repofacts.Judge       = (*llm.Client)(nil)
 	_ repofacts.Cache       = (*store.Store)(nil)
+	_ repofacts.Cache       = (*pg.Store)(nil)
 	_ recipe.Commands       = recipe.CommandsFunc(nil)
 	_ replies.Commenter     = prCommenter{}
 )

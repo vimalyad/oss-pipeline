@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/vimalyad/oss-pipeline/engine/internal/audit"
 	"github.com/vimalyad/oss-pipeline/engine/internal/ghx"
 	"github.com/vimalyad/oss-pipeline/engine/internal/identity"
 	"github.com/vimalyad/oss-pipeline/engine/internal/ledger"
@@ -16,7 +15,6 @@ import (
 	"github.com/vimalyad/oss-pipeline/engine/internal/policy"
 	"github.com/vimalyad/oss-pipeline/engine/internal/publish"
 	"github.com/vimalyad/oss-pipeline/engine/internal/report"
-	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 	"github.com/vimalyad/oss-pipeline/engine/internal/text"
 	"github.com/vimalyad/oss-pipeline/engine/internal/watch"
 )
@@ -39,7 +37,10 @@ func reportCmd(root string, args []string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-	st := store.New(root)
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
 	all, bad := st.All()
 	for _, b := range bad {
 		fmt.Fprintf(os.Stderr, "unreadable: %s: %v\n", b.Slug, b.Err)
@@ -140,7 +141,7 @@ func reportCmd(root string, args []string) int {
 		verb = "created"
 	}
 	fmt.Printf("%s %s\n", verb, res.URL)
-	_ = audit.New(root).Record("gist_"+verb, "", res.ID)
+	_ = openAudit(root).Record("gist_"+verb, "", res.ID)
 	return 0
 }
 

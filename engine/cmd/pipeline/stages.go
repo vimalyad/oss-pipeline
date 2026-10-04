@@ -7,13 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vimalyad/oss-pipeline/engine/internal/audit"
 	"github.com/vimalyad/oss-pipeline/engine/internal/gate"
 	"github.com/vimalyad/oss-pipeline/engine/internal/ledger"
 	"github.com/vimalyad/oss-pipeline/engine/internal/policy"
 	"github.com/vimalyad/oss-pipeline/engine/internal/profile"
 	"github.com/vimalyad/oss-pipeline/engine/internal/propose"
-	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 )
 
 // ledgerCmd writes the contribution record.
@@ -26,7 +24,11 @@ func ledgerCmd(root string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-	cands, bad := store.New(root).All()
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	cands, bad := st.All()
 	for _, b := range bad {
 		fmt.Fprintf(os.Stderr, "unreadable: %s: %v\n", b.Slug, b.Err)
 	}
@@ -63,7 +65,11 @@ func proposeCmd(root string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-	cands, bad := store.New(root).All()
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	cands, bad := st.All()
 	for _, b := range bad {
 		fmt.Fprintf(os.Stderr, "unreadable: %s: %v\n", b.Slug, b.Err)
 	}
@@ -103,7 +109,11 @@ func approveCmd(root string, args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: pipeline approve <slug>")
 		return 2
 	}
-	msg, err := gate.Approve(store.New(root), audit.New(root), args[0])
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	msg, err := gate.Approve(st, openAudit(root), args[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
@@ -122,7 +132,11 @@ A reason is required: a rejection without one cannot be told apart from one the
 pipeline made itself, and a human rejection is never reconsidered.`)
 		return 2
 	}
-	msg, err := gate.Reject(store.New(root), audit.New(root), args[0], strings.Join(args[1:], " "))
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	msg, err := gate.Reject(st, openAudit(root), args[0], strings.Join(args[1:], " "))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
@@ -142,7 +156,11 @@ history entry records who did it and why so that every other edge can go on
 being checked strictly.`)
 		return 2
 	}
-	msg, err := gate.Retry(store.New(root), audit.New(root), args[0], "human",
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	msg, err := gate.Retry(st, openAudit(root), args[0], "human",
 		strings.Join(args[1:], " "))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -158,7 +176,11 @@ func excludeCmd(root string, args []string) int {
 		return 2
 	}
 	ex := gate.Exclusions{Path: filepath.Join(root, "config", "exclusions.yaml")}
-	msg, err := gate.Exclude(store.New(root), audit.New(root), ex, args[0])
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	msg, err := gate.Exclude(st, openAudit(root), ex, args[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
@@ -173,7 +195,11 @@ func claSignedCmd(root string, args []string) int {
 		return 2
 	}
 	ex := gate.Exclusions{Path: filepath.Join(root, "config", "exclusions.yaml")}
-	msg, err := gate.CLASigned(store.New(root), audit.New(root), ex, args[0])
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	msg, err := gate.CLASigned(st, openAudit(root), ex, args[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1

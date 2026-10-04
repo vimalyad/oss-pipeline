@@ -9,7 +9,6 @@ import (
 	"github.com/vimalyad/oss-pipeline/engine/internal/halt"
 	"github.com/vimalyad/oss-pipeline/engine/internal/model"
 	"github.com/vimalyad/oss-pipeline/engine/internal/policy"
-	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 )
 
 // dailyCmd is one full cycle, in dependency order. It is what launchd runs.
@@ -87,7 +86,10 @@ func implementApproved(root string, execute bool) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-	st := store.New(root)
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
 	queue := st.ByStatus(model.StatusApproved, model.StatusAutoApproved)
 	if len(queue) == 0 {
 		fmt.Println("nothing approved")

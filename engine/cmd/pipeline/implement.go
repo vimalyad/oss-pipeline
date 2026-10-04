@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vimalyad/oss-pipeline/engine/internal/audit"
 	"github.com/vimalyad/oss-pipeline/engine/internal/ghx"
 	"github.com/vimalyad/oss-pipeline/engine/internal/guard"
 	"github.com/vimalyad/oss-pipeline/engine/internal/halt"
@@ -59,8 +58,11 @@ func implementCmd(root string, args []string) int {
 	}
 
 	ctx := context.Background()
-	st := store.New(root)
-	log := audit.New(root)
+	st, ok := mustStore(root)
+	if !ok {
+		return 1
+	}
+	log := openAudit(root)
 
 	c, err := st.Load(slug)
 	if err != nil {
