@@ -2,6 +2,7 @@
 # reach a file git can see.
 .env
 config/identity.env
+config/gh-token
 config/ntfy-topic.txt
 config/ntfy-cmd-topic.txt
 *.pem

@@ -137,18 +137,52 @@ func unquote(v string) string {
 	return strings.TrimSpace(v)
 }
 
-// Token reads the PAT from the macOS Keychain. Never cached, never written to
-// disk, never placed in a file this process controls.
+// TokenPath is the token file used where there is no macOS Keychain. It is
+// the only place the token is written down, so it must be readable by this
+// user alone; Token refuses it otherwise.
+func (i Identity) TokenPath() string { return filepath.Join(i.Root, "config", "gh-token") }
+
+// Token reads the PAT. Never cached.
+//
+// On macOS it comes from the Keychain. Elsewhere it comes from TokenPath: the
+// pipeline runs from a timer before anyone logs in, when a desktop keyring is
+// still locked, so a file only this user can read is the strongest store that
+// is actually available then. A file anyone else can read is refused rather
+// than used, because the token publishes under this account.
 func Token(id Identity) (string, error) {
-	out, err := exec.Command("security", "find-generic-password",
-		"-a", id.KeychainAccount, "-s", id.KeychainService, "-w").Output()
-	if err != nil {
-		return "", fmt.Errorf(
-			"no Keychain item %s/%s; create it with:\n"+
-				"  security add-generic-password -a %s -s %s -w",
-			id.KeychainService, id.KeychainAccount, id.KeychainAccount, id.KeychainService)
+	if _, err := exec.LookPath("security"); err == nil {
+		out, err := exec.Command("security", "find-generic-password",
+			"-a", id.KeychainAccount, "-s", id.KeychainService, "-w").Output()
+		if err != nil {
+			return "", fmt.Errorf(
+				"no Keychain item %s/%s; create it with:\n"+
+					"  security add-generic-password -a %s -s %s -w",
+				id.KeychainService, id.KeychainAccount, id.KeychainAccount, id.KeychainService)
+		}
+		return strings.TrimSpace(string(out)), nil
 	}
-	return strings.TrimSpace(string(out)), nil
+	return tokenFromFile(id.TokenPath())
+}
+
+func tokenFromFile(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("no token file %s; create it readable by you alone:\n"+
+			"  (umask 077; gh auth token -u <login> > %s)", path, path)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		return "", fmt.Errorf("token file %s is mode %o; it must be readable by you alone "+
+			"(chmod 600 %s)", path, perm, path)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read token file: %w", err)
+	}
+	tok := strings.TrimSpace(string(b))
+	if tok == "" {
+		return "", fmt.Errorf("token file %s is empty", path)
+	}
+	return tok, nil
 }
 
 // Env is the environment for subprocesses that talk to GitHub or write

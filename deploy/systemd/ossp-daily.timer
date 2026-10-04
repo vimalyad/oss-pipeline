@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the OSS pipeline daily at 09:00 IST
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 Asia/Kolkata
+# A run missed while the laptop was off or asleep happens as soon as it is
+# back, rather than waiting for tomorrow.
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

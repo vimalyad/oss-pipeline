@@ -106,6 +106,29 @@ open http://localhost:8080
 Dry run is the default everywhere. Nothing forks, commits, pushes or opens a
 pull request without `--execute`.
 
+### Running unattended (Linux)
+
+Postgres and the dashboard run under Docker with `restart: unless-stopped`, so
+they come back whenever the machine boots. The engine runs on the host, not in
+its container, because its judgement steps run the `claude` CLI with the
+operator's login; a systemd user timer runs `deploy/run-daily.sh` at 09:00 IST,
+and lingering starts it at boot without anyone logging in. A run missed while
+the laptop was off or asleep happens as soon as it is back.
+
+```bash
+deploy/install.sh                                # once: timer + linger
+systemctl --user list-timers ossp-daily.timer    # when it next runs
+journalctl --user -u ossp-daily                  # what the runs did
+systemctl --user start ossp-daily                # run one now
+pipeline halt "<reason>"                         # stop it; `resume` to lift
+```
+
+The runner waits for the network and the database, rebuilds the engine if
+the source changed, and refuses to start past a failing `pipeline doctor`.
+Before login the desktop keyring is locked, so the token is read from
+`config/gh-token` (mode 600, gitignored; Token refuses it if anyone else can
+read it), and Wi-Fi has to be a connection stored for all users.
+
 The engine uses Postgres whenever `DATABASE_URL` is set, and the JSON files
 under `state/` otherwise. A set but unreachable database is an error, never a
 quiet fall back to files. To move existing JSON state across (dry run first):

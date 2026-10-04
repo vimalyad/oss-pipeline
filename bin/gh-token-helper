@@ -1,5 +1,6 @@
 #!/bin/sh
-# git credential helper: serves the vimalyad PAT from the macOS Keychain.
+# git credential helper: serves the vimalyad PAT from the macOS Keychain, or
+# from config/gh-token where there is none.
 #
 # Wired per-clone (see identity.py harden_clone) AFTER clearing the inherited
 # global `gh auth git-credential` helper, so a pipeline clone can never
@@ -26,11 +27,26 @@ done
 [ "$protocol" = "https" ] || exit 0
 [ "$host" = "github.com" ] || exit 0
 
-if ! token=$(security find-generic-password \
-        -a "$OSS_KEYCHAIN_ACCOUNT" -s "$OSS_KEYCHAIN_SERVICE" -w 2>/dev/null); then
-    echo "gh-token-helper: no Keychain item ${OSS_KEYCHAIN_SERVICE}/${OSS_KEYCHAIN_ACCOUNT}." >&2
-    echo "  Create it with: security add-generic-password -a ${OSS_KEYCHAIN_ACCOUNT} -s ${OSS_KEYCHAIN_SERVICE} -w" >&2
-    exit 1
+if command -v security >/dev/null 2>&1; then
+    if ! token=$(security find-generic-password \
+            -a "$OSS_KEYCHAIN_ACCOUNT" -s "$OSS_KEYCHAIN_SERVICE" -w 2>/dev/null); then
+        echo "gh-token-helper: no Keychain item ${OSS_KEYCHAIN_SERVICE}/${OSS_KEYCHAIN_ACCOUNT}." >&2
+        echo "  Create it with: security add-generic-password -a ${OSS_KEYCHAIN_ACCOUNT} -s ${OSS_KEYCHAIN_SERVICE} -w" >&2
+        exit 1
+    fi
+else
+    # No Keychain (Linux): the same private file the engine reads, refused
+    # if anyone but this user could read it.
+    token_file="$SCRIPT_DIR/../config/gh-token"
+    if [ ! -f "$token_file" ]; then
+        echo "gh-token-helper: no token file $token_file" >&2
+        exit 1
+    fi
+    case "$(stat -c %a "$token_file")" in
+        600|400) ;;
+        *) echo "gh-token-helper: $token_file must be mode 600" >&2; exit 1 ;;
+    esac
+    token=$(tr -d '[:space:]' < "$token_file")
 fi
 
 printf 'username=%s\n' "$OSS_LOGIN"

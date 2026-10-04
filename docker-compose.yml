@@ -15,6 +15,9 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    # Localhost only, for the engine, which runs on the host (see engine below).
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ossp -d ossp"]
       interval: 5s
@@ -23,6 +26,11 @@ services:
     restart: unless-stopped
 
   engine:
+    # Opt-in (`docker compose --profile container-engine up`). The engine
+    # normally runs on the host from a systemd timer (deploy/systemd/),
+    # because its judgement steps run the `claude` CLI with the operator's
+    # login, which this image does not carry.
+    profiles: ["container-engine"]
     # Context is the repository root, not ./engine, because config/ holds the
     # forbidden-trailers pattern file that both the git hooks and the engine
     # read. Duplicating it into engine/ would give the one rule that can never
@@ -38,7 +46,9 @@ services:
       # does not exist in a container, so it comes from .env instead. That is
       # strictly weaker and is the one security regression of containerising
       # the engine -- keep .env mode 600 and never commit it.
-      GH_TOKEN: ${GH_TOKEN:?set GH_TOKEN in .env}
+      # Only for the container-engine profile; the host engine reads
+      # config/gh-token instead, so the token is not written down twice.
+      GH_TOKEN: ${GH_TOKEN:-}
       OSS_LOGIN: ${OSS_LOGIN:?}
       OSS_NAME: ${OSS_NAME:?}
       OSS_EMAIL: ${OSS_EMAIL:?}

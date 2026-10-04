@@ -308,3 +308,31 @@ func TestAssertCloneRejectsAForkRemoteOnAnotherAccount(t *testing.T) {
 		t.Fatalf("our own fork was rejected: %v", err)
 	}
 }
+
+// The file is the only place the token is written down, so one anyone else
+// can read is refused rather than used.
+func TestTokenFileMustBePrivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gh-token")
+	if _, err := tokenFromFile(path); err == nil {
+		t.Fatal("a missing token file was accepted")
+	}
+	if err := os.WriteFile(path, []byte("tok123\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tokenFromFile(path); err == nil || !strings.Contains(err.Error(), "readable by you alone") {
+		t.Fatalf("a world-readable token file was accepted: %v", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := tokenFromFile(path)
+	if err != nil || got != "tok123" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if err := os.WriteFile(path, []byte("  \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tokenFromFile(path); err == nil {
+		t.Fatal("an empty token file was accepted")
+	}
+}
