@@ -134,7 +134,7 @@ func Score(c *model.Candidate, cfg *policy.Config, otherLogins []string, d Deps)
 		if d.MissingToolchain != nil {
 			if missing := d.MissingToolchain(f.PrimaryLanguage); missing != "" {
 				r.Blockers = append(r.Blockers, fmt.Sprintf(
-					"%s toolchain missing -- install `%s` (e.g. brew install %s) "+
+					"%s"+toolchainBlockerMark+"install `%s` (e.g. brew install %s) "+
 						"before this can be built or tested",
 					f.PrimaryLanguage, missing, missing))
 			}
@@ -339,3 +339,12 @@ const AgePenaltyPrefix = "issue opened "
 
 // IsAgePenalty reports whether a soft penalty is only the issue's age.
 func IsAgePenalty(p string) bool { return strings.HasPrefix(p, AgePenaltyPrefix) }
+
+// toolchainBlockerMark identifies the blocker for a build tool this machine
+// lacks. Unlike the other blockers it can stop being true without anyone
+// touching the candidate -- the tool gets installed -- so callers may re-check
+// it rather than trust the stored copy.
+const toolchainBlockerMark = " toolchain missing -- "
+
+// IsToolchainBlocker reports whether a blocker is a missing build tool.
+func IsToolchainBlocker(b string) bool { return strings.Contains(b, toolchainBlockerMark) }

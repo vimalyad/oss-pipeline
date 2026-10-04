@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -168,5 +169,46 @@ func TestAutonomyOnlyOnSeedRepos(t *testing.T) {
 	// The refusal is lasting: waiting does not turn a repository into a seed.
 	if onlyTemporary([]string{notSeedBlocker}) {
 		t.Error("a non-seed refusal would be held forever instead of rejected")
+	}
+}
+
+// The ramp has to see this account's pull requests that the pipeline never
+// opened: the first real queue held an issue on helm/helm, where the account
+// already had an unmerged pull request from before the pipeline existed.
+func TestTheRampSeesPullRequestsThePipelineDidNotOpen(t *testing.T) {
+	o := openPRs{
+		open:   reposFromURLs("https://api.github.com/repos/helm/helm\nhttps://api.github.com/repos/Kubernetes-Sigs/kind\n"),
+		merged: reposFromURLs("https://api.github.com/repos/kubernetes-sigs/kind"),
+	}
+	if !o.holds("helm/helm", false) {
+		t.Error("an unmerged open pull request did not hold the repository")
+	}
+	if o.holds("helm/helm", true) {
+		t.Error("still held after a merge recorded by the pipeline")
+	}
+	if o.holds("kubernetes-sigs/kind", false) {
+		t.Error("held although the account has merged there")
+	}
+	if o.holds("cli/cli", false) {
+		t.Error("held a repository with no pull request from the account")
+	}
+}
+
+func TestAToolchainBlockerClearsOnceTheToolIsInstalled(t *testing.T) {
+	c := &model.Candidate{
+		Facts: &model.RepoFacts{PrimaryLanguage: "Python"},
+		Blockers: []string{
+			"Python toolchain missing -- install `uv` (e.g. brew install uv) before this can be built or tested",
+			"CLA required for x -- sign once, then `pipeline cla-signed x/y`",
+		},
+	}
+	installed := func(string) string { return "" }
+	absent := func(string) string { return "uv" }
+	if got := dropStaleToolchainBlockers(c, absent); len(got) != 2 {
+		t.Fatalf("dropped a toolchain blocker while the tool is still missing: %v", got)
+	}
+	got := dropStaleToolchainBlockers(c, installed)
+	if len(got) != 1 || !strings.HasPrefix(got[0], "CLA required") {
+		t.Fatalf("after install: %v -- want only the CLA blocker kept", got)
 	}
 }

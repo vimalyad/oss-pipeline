@@ -1,17 +1,22 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/vimalyad/oss-pipeline/engine/internal/autogate"
+	"github.com/vimalyad/oss-pipeline/engine/internal/ghx"
 	"github.com/vimalyad/oss-pipeline/engine/internal/halt"
+	"github.com/vimalyad/oss-pipeline/engine/internal/identity"
 	"github.com/vimalyad/oss-pipeline/engine/internal/model"
 	"github.com/vimalyad/oss-pipeline/engine/internal/policy"
 	"github.com/vimalyad/oss-pipeline/engine/internal/profile"
+	"github.com/vimalyad/oss-pipeline/engine/internal/score"
 )
 
 // autoApproveCmd puts every waiting proposal through internal/autogate.
@@ -67,6 +72,17 @@ func autoApproveCmd(root string, args []string) int {
 	log := openAudit(root)
 	haltReason, halted := halt.New(root).Active()
 
+	// The account's own pull requests, from GitHub rather than from this
+	// store: the ramp is about what maintainers see from this account, and
+	// they see pull requests the pipeline never opened too. Failing to read
+	// them approves nothing -- a ramp that silently assumes "no open PRs" is
+	// the one failure it exists to prevent.
+	theirs, err := accountPRs(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: reading this account's pull requests: %v\n", err)
+		return 1
+	}
+
 	all, _ := st.All()
 	queue := st.ByStatus(model.StatusProposed)
 	// Oldest proposal first: it has waited longest and its issue is the one
@@ -84,6 +100,7 @@ func autoApproveCmd(root string, args []string) int {
 	previewRepos := map[string]bool{}
 
 	for _, c := range queue {
+		c.Blockers = dropStaleToolchainBlockers(c, missingToolchain)
 		lang, topics := "", []string(nil)
 		if c.Facts != nil {
 			lang, topics = c.Facts.PrimaryLanguage, c.Facts.Topics
@@ -108,8 +125,9 @@ func autoApproveCmd(root string, args []string) int {
 				UsedToday: counts.today, UsedThisWeek: counts.week, OpenNow: counts.open,
 			},
 			RepoHasAutoPR: repoHoldsAutonomy(all, c.Repo) ||
+				theirs.holds(c.Repo, mergedOn(all, c.Repo)) ||
 				(previewRepos[strings.ToLower(c.Repo)] && !mergedOn(all, c.Repo)),
-			CLASigned:     cfg.CLASigned(c.Repo),
+			CLASigned: cfg.CLASigned(c.Repo),
 		}
 		d := autogate.Decide(in)
 		if !isSeedRepo(prof, c.Repo) {
@@ -341,6 +359,81 @@ func isSeedRepo(prof *profile.Profile, repo string) bool {
 		}
 	}
 	return false
+}
+
+// openPRs is where this account has pull requests open and merged on GitHub,
+// by lowercased owner/name.
+type openPRs struct{ open, merged map[string]bool }
+
+// holds applies the ramp to pull requests the pipeline did not open: an open
+// one from this account blocks autonomy on that repository until something
+// of ours has merged there, exactly as one the pipeline opened would.
+func (o openPRs) holds(repo string, mergedLocally bool) bool {
+	r := strings.ToLower(repo)
+	return o.open[r] && !o.merged[r] && !mergedLocally
+}
+
+func accountPRs(root string) (openPRs, error) {
+	id, err := identity.Load(filepath.Join(root, "config", "identity.env"))
+	if err != nil {
+		return openPRs{}, err
+	}
+	token, err := identity.Token(id)
+	if err != nil {
+		return openPRs{}, err
+	}
+	gh := ghx.New(identity.Env(id, token))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	search := func(state string) (map[string]bool, error) {
+		// -X GET: gh turns -f fields into a POST body otherwise.
+		out, err := gh.RESTRaw(ctx, []string{"api", "-X", "GET", "search/issues",
+			"-f", fmt.Sprintf("q=author:%s type:pr %s", id.Login, state),
+			"-f", "per_page=100", "--jq", ".items[].repository_url"}, "")
+		if err != nil {
+			return nil, err
+		}
+		return reposFromURLs(out), nil
+	}
+	o := openPRs{}
+	if o.open, err = search("is:open"); err != nil {
+		return o, err
+	}
+	if o.merged, err = search("is:merged"); err != nil {
+		return o, err
+	}
+	return o, nil
+}
+
+// reposFromURLs turns API repository URLs, one per line, into owner/name.
+func reposFromURLs(out string) map[string]bool {
+	repos := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if i := strings.Index(line, "/repos/"); i >= 0 {
+			repos[strings.ToLower(line[i+len("/repos/"):])] = true
+		}
+	}
+	return repos
+}
+
+// dropStaleToolchainBlockers removes a "toolchain missing" blocker once the
+// tool is installed. Scoring stored it, and nothing re-scores a proposal, so
+// without this a candidate blocked yesterday for want of `uv` would be
+// rejected for good today even after `uv` was installed.
+func dropStaleToolchainBlockers(c *model.Candidate, missing func(string) string) []string {
+	lang := ""
+	if c.Facts != nil {
+		lang = c.Facts.PrimaryLanguage
+	}
+	var kept []string
+	for _, b := range c.Blockers {
+		if score.IsToolchainBlocker(b) && missing(lang) == "" {
+			continue
+		}
+		kept = append(kept, b)
+	}
+	return kept
 }
 
 // mergedOn reports whether anything of ours has merged on repo, which ends
