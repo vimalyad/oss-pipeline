@@ -181,6 +181,9 @@ func implementCmd(root string, args []string) int {
 	rec, err := recipe.Resolve(clone, c.Repo, lang, ov, toolchainCommands())
 	if err != nil && !errors.Is(err, recipe.ErrIncomplete) {
 		fmt.Fprintln(os.Stderr, "recipe:", err)
+		if execute {
+			abandonUnbuildable(root, st, c, err.Error())
+		}
 		return 1
 	}
 	say(fmt.Sprintf("recipe: %s", rec))
@@ -190,6 +193,9 @@ func implementCmd(root string, args []string) int {
 	if !rec.Complete() {
 		fmt.Fprintf(os.Stderr, "\nno usable recipe for %s: nothing can be verified here.\n"+
 			"Add an entry to config/environments.yaml -- the unresolved lines above say what is missing.\n", c.Repo)
+		if execute {
+			abandonUnbuildable(root, st, c, "recipe has no test command")
+		}
 		return 1
 	}
 
@@ -587,4 +593,26 @@ func cmdsOf(r implement.Result) []string {
 		}
 	}
 	return out
+}
+
+// abandonUnbuildable takes approved work this machine cannot build out of the
+// queue. Left approved, it was tried and failed every run, held its slot in
+// the autonomous caps, and kept its repository on hold -- one repository with
+// no derivable recipe stalled the pipeline's first autonomous approval for
+// good. Abandoned is recoverable: once config/environments.yaml has an entry
+// for the repository, `pipeline retry` puts it back, and the blocker says so.
+func abandonUnbuildable(root string, st candidateStore, c *model.Candidate, why string) {
+	note := "cannot build " + c.Repo + " in a container: " + oneLine(why)
+	c.Blockers = append(c.Blockers, fmt.Sprintf(
+		"no container recipe for %s -- add it to config/environments.yaml, then `pipeline retry %s <reason>`",
+		c.Repo, c.Slug()))
+	if err := model.Transition(c, model.StatusAbandoned, note); err != nil {
+		fmt.Fprintln(os.Stderr, "state:", err)
+		return
+	}
+	if _, err := st.Save(c); err != nil {
+		fmt.Fprintln(os.Stderr, "state:", err)
+		return
+	}
+	_ = openAudit(root).Record("abandon", c.Slug(), note)
 }

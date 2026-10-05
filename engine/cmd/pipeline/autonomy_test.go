@@ -8,6 +8,7 @@ import (
 	"github.com/vimalyad/oss-pipeline/engine/internal/autogate"
 	"github.com/vimalyad/oss-pipeline/engine/internal/model"
 	"github.com/vimalyad/oss-pipeline/engine/internal/profile"
+	"github.com/vimalyad/oss-pipeline/engine/internal/store"
 )
 
 var autoNow = time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
@@ -210,5 +211,31 @@ func TestAToolchainBlockerClearsOnceTheToolIsInstalled(t *testing.T) {
 	got := dropStaleToolchainBlockers(c, installed)
 	if len(got) != 1 || !strings.HasPrefix(got[0], "CLA required") {
 		t.Fatalf("after install: %v -- want only the CLA blocker kept", got)
+	}
+}
+
+// pytorch/vision was approved by the gate, had no derivable recipe, and sat
+// at auto_approved failing every run while holding its slot and its repo.
+func TestUnbuildableApprovedWorkLeavesTheQueue(t *testing.T) {
+	root := t.TempDir()
+	st := store.New(root)
+	c := autoCand("pytorch/vision", 1775, model.StatusAutoApproved, time.Hour)
+	if _, err := st.Save(c); err != nil {
+		t.Fatal(err)
+	}
+	abandonUnbuildable(root, st, c, "no container recipe")
+
+	got, err := st.Load(c.Slug())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != model.StatusAbandoned {
+		t.Fatalf("status = %q, want abandoned", got.Status)
+	}
+	if len(got.Blockers) != 1 || !strings.Contains(got.Blockers[0], "environments.yaml") {
+		t.Fatalf("blockers = %v, want one saying how to recover", got.Blockers)
+	}
+	if liveAuto[got.Status] {
+		t.Fatal("abandoned work still counts against the autonomous caps")
 	}
 }
