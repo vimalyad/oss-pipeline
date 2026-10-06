@@ -3,6 +3,7 @@ package repro
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -274,5 +275,36 @@ func TestNewFailuresIgnoresWhatWasAlreadyRed(t *testing.T) {
 	// A change that fixes nothing and breaks nothing must produce no news.
 	if got := NewFailures(before, before); len(got) != 0 {
 		t.Errorf("NewFailures against itself = %v", got)
+	}
+}
+
+// Only the failures that will repeat may take approved work out of the queue;
+// a flaky network during install must not.
+func TestIsPersistentSplitsRepeatingFromTransient(t *testing.T) {
+	persistent := fmt.Errorf("%w: install step %q: %s", ErrEnvironment, "pnpm build",
+		"a command the repository expects is not installed in this image")
+	transient := fmt.Errorf("%w: install step %q: %s", ErrEnvironment, "pip install -e .",
+		"DNS is unavailable: verification runs with the network off")
+	if !IsPersistent(persistent) {
+		t.Error("a missing command was treated as transient")
+	}
+	if IsPersistent(transient) {
+		t.Error("a DNS failure was treated as persistent")
+	}
+	if IsPersistent(errors.New("a command the repository expects is not installed in this image")) {
+		t.Error("a non-environment error matched")
+	}
+	// Every persistent reason must be one classify can actually produce, or
+	// the list silently drifts from the table it mirrors.
+	for _, w := range persistentWhys {
+		found := false
+		for _, e := range envFailures {
+			if e.why == w {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("persistent reason %q is not in envFailures", w)
+		}
 	}
 }

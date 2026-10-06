@@ -13,3 +13,7 @@ with it, which is how the matrix-expression and path-filter defects were found.
 
 pytorch/vision keeps all twelve workflows. The assertion is that none of them
 yields a recipe, so dropping any of them would weaken it.
+
+  typescript-eslint__typescript-eslint/   MIT -- ci.yml, the local
+                            prepare-install action, and package.json trimmed
+                            to name and packageManager (commit d57b8da).

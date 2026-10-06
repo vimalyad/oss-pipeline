@@ -1,0 +1,10 @@
+{
+  "name": "@typescript-eslint/typescript-eslint",
+  "packageManager": "pnpm@12.8.0+sha512.3916e9559cdfbddf7dc921e8999076584425161de773f6cabf7f47467f0d9452bfa89a689ec245753ad3d55abcb3cf706e667ac12062dbc9c625fbd72bca20dc",
+  "scripts": {
+    "build": "nx run-many -t build --exclude website website-eslint",
+    "lint": "nx run-many -t lint",
+    "test": "nx run-many -t test --exclude integration-tests website website-eslint",
+    "typecheck": "nx run-many -t typecheck"
+  }
+}

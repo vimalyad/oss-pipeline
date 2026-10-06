@@ -22,7 +22,51 @@ type workflow struct {
 	Path string
 	Name string         `yaml:"name"`
 	On   yaml.Node      `yaml:"on"`
+	Env  map[string]any `yaml:"env"`
 	Jobs map[string]job `yaml:"jobs"`
+}
+
+// envContext is a workflow's top-level env as expression context, literal
+// values only. `node-version: ${{ env.PRIMARY_NODE_VERSION }}` is how
+// typescript-eslint pins its Node, and leaving it unresolved left the image
+// without the version CI actually uses.
+func (w *workflow) envContext() map[string]string {
+	out := map[string]string{}
+	for _, k := range sortedKeys(w.Env) {
+		if v := str(w.Env, k); v != "" && !hasExpr(v) {
+			out["env."+k] = v
+		}
+	}
+	return out
+}
+
+// localAction is a composite action defined inside the repository, the
+// `uses: ./.github/actions/x` kind.
+type localAction struct {
+	Inputs map[string]struct {
+		Default any `yaml:"default"`
+	} `yaml:"inputs"`
+	Runs struct {
+		Using string `yaml:"using"`
+		Steps []step `yaml:"steps"`
+	} `yaml:"runs"`
+}
+
+func loadLocalAction(root, rel string) (*localAction, error) {
+	var lastErr error
+	for _, name := range []string{"action.yml", "action.yaml"} {
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel), name))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		var a localAction
+		if err := yaml.Unmarshal(b, &a); err != nil {
+			return nil, fmt.Errorf("%s: %w", rel, err)
+		}
+		return &a, nil
+	}
+	return nil, lastErr
 }
 
 type job struct {

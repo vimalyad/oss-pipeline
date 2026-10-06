@@ -223,6 +223,9 @@ func implementCmd(root string, args []string) int {
 	say("installing dependencies (network on)")
 	if _, err := repro.Install(ctx, sess, rec); err != nil {
 		fmt.Fprintln(os.Stderr, "install:", err)
+		if execute && repro.IsPersistent(err) {
+			abandonUnbuildable(root, st, c, err.Error())
+		}
 		return 1
 	}
 

@@ -1,6 +1,7 @@
 package recipe
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -181,7 +182,7 @@ func collect(w *workflow, byPath map[string]*workflow, inputs map[string]string,
 		if len(j.Steps) == 0 {
 			continue
 		}
-		ctx := map[string]string{}
+		ctx := w.envContext()
 		for k, v := range inputs {
 			ctx[k] = v
 		}
@@ -299,7 +300,13 @@ func build(root, repo, lang string, best candidate, all []candidate) Recipe {
 	r.Evidence = dedupe(r.Evidence)
 
 	r.BaseImage = best.baseImg
-	sys, tools, steps, unres := readSteps(best)
+	sys, tools, steps, unres := readSteps(root, best, 0)
+	// Installing pnpm with npm needs Node in the image. Added last, and only
+	// if nothing named it: a version-less Node ahead of setup-node's would
+	// shadow the version CI pins.
+	if needsNode(steps) && !hasTool(tools, "node") {
+		tools = append(tools, Tool{Lang: "node"})
+	}
 	r.System, r.Tools, r.Unresolved = sys, resolveVersionFiles(root, tools), unres
 	for _, s := range steps {
 		switch s.Kind {
@@ -334,7 +341,7 @@ func build(root, repo, lang string, best candidate, all []candidate) Recipe {
 			if c.where() == best.where() || c.score <= 0 {
 				continue
 			}
-			_, _, s2, _ := readSteps(c)
+			_, _, s2, _ := readSteps(root, c, 0)
 			for _, s := range s2 {
 				if s.Kind == "lint" {
 					r.Lint = append(r.Lint, s)
@@ -349,10 +356,57 @@ func build(root, repo, lang string, best candidate, all []candidate) Recipe {
 	return r
 }
 
-func readSteps(c candidate) (system []string, tools []Tool, steps []Step, unresolved []string) {
+func readSteps(root string, c candidate, depth int) (system []string, tools []Tool, steps []Step, unresolved []string) {
 	where := c.where()
 	for _, s := range c.job.Steps {
 		if skipStep(s) {
+			continue
+		}
+		// A composite action in the repository itself is just more steps,
+		// and often the important ones: typescript-eslint installs pnpm,
+		// Node and its dependencies inside ./.github/actions/prepare-install,
+		// and reading it as one opaque action produced an image with none
+		// of the three.
+		if rel, ok := strings.CutPrefix(s.Uses, "./"); ok && depth < maxCallDepth {
+			if act, err := loadLocalAction(root, rel); err == nil && act.Runs.Using == "composite" {
+				sub := c
+				sub.inputs = map[string]string{}
+				for k, v := range c.inputs {
+					if strings.HasPrefix(k, "env.") {
+						sub.inputs[k] = v
+					}
+				}
+				for _, k := range sortedKeys(act.Inputs) {
+					if d := fmt.Sprint(act.Inputs[k].Default); act.Inputs[k].Default != nil && !hasExpr(d) {
+						sub.inputs["inputs."+k] = d
+					}
+				}
+				for _, k := range sortedKeys(s.With) {
+					if v := expand(str(s.With, k), c.inputs); v != "" && !hasExpr(v) {
+						sub.inputs["inputs."+k] = v
+					}
+				}
+				sub.job = job{Steps: act.Runs.Steps}
+				sy, tl, st, un := readSteps(root, sub, depth+1)
+				system = append(system, sy...)
+				tools = append(tools, tl...)
+				steps = append(steps, st...)
+				unresolved = append(unresolved, un...)
+				continue
+			}
+		}
+		if a := actionName(s.Uses); a == "pnpm/action-setup" || a == "pnpm/setup" {
+			// pnpm is installed with npm, at the version the step or the
+			// repository's packageManager pins, so it needs Node in the image.
+			ver := expand(str(s.With, "version"), c.inputs)
+			if ver == "" || hasExpr(ver) {
+				ver = packageManagerVersion(root, "pnpm")
+			}
+			pkg := "pnpm"
+			if ver != "" {
+				pkg += "@" + ver
+			}
+			steps = append(steps, Step{Kind: "install", Run: "npm install -g " + pkg, From: where})
 			continue
 		}
 		if a := actionName(s.Uses); a != "" {
@@ -584,4 +638,45 @@ func goSeries(v string) string {
 		return parts[0] + "." + parts[1]
 	}
 	return v
+}
+
+// packageManagerVersion reads the version package.json pins for a package
+// manager ("pnpm@12.8.0+sha512..." gives "12.8.0"), or "".
+func packageManagerVersion(root, name string) string {
+	b, err := os.ReadFile(filepath.Join(root, "package.json"))
+	if err != nil {
+		return ""
+	}
+	var pkg struct {
+		PackageManager string `json:"packageManager"`
+	}
+	if json.Unmarshal(b, &pkg) != nil {
+		return ""
+	}
+	ver, ok := strings.CutPrefix(pkg.PackageManager, name+"@")
+	if !ok {
+		return ""
+	}
+	if i := strings.IndexByte(ver, '+'); i >= 0 {
+		ver = ver[:i]
+	}
+	return ver
+}
+
+func needsNode(steps []Step) bool {
+	for _, s := range steps {
+		if strings.HasPrefix(s.Run, "npm install -g pnpm") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTool(tools []Tool, lang string) bool {
+	for _, t := range tools {
+		if t.Lang == lang {
+			return true
+		}
+	}
+	return false
 }

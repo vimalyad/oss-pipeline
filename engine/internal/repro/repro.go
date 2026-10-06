@@ -92,6 +92,34 @@ var envFailures = []struct {
 		"the image is the wrong architecture for this machine"},
 }
 
+// persistentWhys are the environment failures that will happen again on the
+// next run: the image lacks something, or cannot express what the repository
+// needs. The others -- network, disk, memory, a timeout -- can clear by
+// themselves, so retrying those is right and abandoning them would throw
+// away approved work over a bad morning.
+var persistentWhys = []string{
+	"a command the repository expects is not installed in this image",
+	"a system library is missing from this image",
+	"a permission problem inside the container, not in the code",
+	"dependency installation failed in this image",
+	"the image is the wrong architecture for this machine",
+}
+
+// IsPersistent reports whether an environment failure will repeat until the
+// recipe changes.
+func IsPersistent(err error) bool {
+	if err == nil || !errors.Is(err, ErrEnvironment) {
+		return false
+	}
+	msg := err.Error()
+	for _, w := range persistentWhys {
+		if strings.Contains(msg, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // testOutcomeRe matches a line that only a test runner which actually ran can
 // produce: pytest's failure summary, go test's per-test verdict, cargo's, and
 // a compiler's diagnostic.
