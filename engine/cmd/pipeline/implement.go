@@ -266,6 +266,15 @@ func implementCmd(root string, args []string) int {
 
 	if res.DiffEmpty {
 		fmt.Printf("\nNo change made. The agent's reason:\n\n%s\n", res.Refusal)
+		if execute {
+			// A considered "nothing safe to change here" will be the same
+			// answer tomorrow, at the same cost, while holding the slot and
+			// the repository. typescript-eslint#12798 -- a Codecov problem
+			// whose fixes all live in workflow files -- is the case.
+			abandonApproved(root, st, c,
+				"no change made: "+oneLine(firstLine(strings.TrimSpace(res.Refusal))),
+				fmt.Sprintf("the implementer made no change -- read its reason in the audit log, then `pipeline retry %s <reason>` if the brief can be made workable", c.Slug()))
+		}
 		return 1
 	}
 	say("scope: " + res.TestScope)
@@ -605,10 +614,17 @@ func cmdsOf(r implement.Result) []string {
 // good. Abandoned is recoverable: once config/environments.yaml has an entry
 // for the repository, `pipeline retry` puts it back, and the blocker says so.
 func abandonUnbuildable(root string, st candidateStore, c *model.Candidate, why string) {
-	note := "cannot build " + c.Repo + " in a container: " + oneLine(why)
-	c.Blockers = append(c.Blockers, fmt.Sprintf(
-		"no container recipe for %s -- add it to config/environments.yaml, then `pipeline retry %s <reason>`",
-		c.Repo, c.Slug()))
+	abandonApproved(root, st, c,
+		"cannot build "+c.Repo+" in a container: "+oneLine(why),
+		fmt.Sprintf("no container recipe for %s -- add it to config/environments.yaml, then `pipeline retry %s <reason>`",
+			c.Repo, c.Slug()))
+}
+
+// abandonApproved moves approved work that will fail the same way on every
+// run to abandoned, with a blocker naming what would revive it. Nothing
+// public has happened at any of the points that call it.
+func abandonApproved(root string, st candidateStore, c *model.Candidate, note, blocker string) {
+	c.Blockers = append(c.Blockers, blocker)
 	if err := model.Transition(c, model.StatusAbandoned, note); err != nil {
 		fmt.Fprintln(os.Stderr, "state:", err)
 		return

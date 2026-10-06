@@ -239,3 +239,27 @@ func TestUnbuildableApprovedWorkLeavesTheQueue(t *testing.T) {
 		t.Fatal("abandoned work still counts against the autonomous caps")
 	}
 }
+
+// A declined patch is the same answer tomorrow at the same cost, so it must
+// leave the queue -- with the reason, and a way back.
+func TestDeclinedWorkLeavesTheQueueWithItsReason(t *testing.T) {
+	root := t.TempDir()
+	st := store.New(root)
+	c := autoCand("typescript-eslint/typescript-eslint", 12798, model.StatusAutoApproved, time.Hour)
+	if _, err := st.Save(c); err != nil {
+		t.Fatal(err)
+	}
+	abandonApproved(root, st, c, "no change made: the fix lives in workflow files",
+		"the implementer made no change -- `pipeline retry x <reason>` if the brief can be made workable")
+	got, err := st.Load(c.Slug())
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := got.History[len(got.History)-1]
+	if got.Status != model.StatusAbandoned || !strings.Contains(last.Note, "workflow files") {
+		t.Fatalf("status %q, last note %q", got.Status, last.Note)
+	}
+	if len(got.Blockers) != 1 || !strings.Contains(got.Blockers[0], "pipeline retry") {
+		t.Fatalf("blockers = %v", got.Blockers)
+	}
+}
