@@ -96,7 +96,9 @@ wait_for() {
         sleep 30
     done
 }
-wait_for "network" curl -sf --max-time 10 -o /dev/null https://api.github.com/zen
+# Any HTTP response proves connectivity. GitHub can rate-limit this anonymous
+# probe with 403 while the pipeline's authenticated requests still work.
+wait_for "network" curl -sS --max-time 10 -o /dev/null https://api.github.com/zen
 # The compose project is named after the clone's directory, not this one.
 wait_for "database" docker compose -p oss-pipeline -f "$ROOT/docker-compose.yml" \
     --env-file "$ROOT/.env" exec -T db pg_isready -U ossp -d ossp
