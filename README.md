@@ -130,6 +130,9 @@ engine there (cached by revision), and runs from that copy. Work in progress
 on a branch in the clone can therefore never reach a scheduled run. It waits
 for the network and the database, and refuses to start past a failing
 `pipeline doctor`.
+Before an executing daily cycle, `pipeline worker-check` makes a small request
+to each worker model. Expired logins and usage limits stop the cycle before
+container builds or queue changes, with the worker's error in the journal.
 If the network or database is still missing after 30 minutes it exits 75 and
 systemd retries half-hourly, up to a day's worth; any other failure is not
 retried, because the cycle publishes.

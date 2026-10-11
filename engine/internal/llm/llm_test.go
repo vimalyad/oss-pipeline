@@ -15,6 +15,78 @@ func stub(out string, err error) *Client {
 	return c
 }
 
+func TestWorkerFailureIncludesStdoutDiagnostic(t *testing.T) {
+	const diagnostic = "Failed to authenticate: OAuth session expired and could not be refreshed"
+	for _, method := range []string{"judge", "judge-with", "patch"} {
+		t.Run(method, func(t *testing.T) {
+			c := stub(diagnostic, errors.New("exit status 1"))
+			var err error
+			switch method {
+			case "judge":
+				_, err = c.Judge(context.Background(), "check")
+			case "judge-with":
+				_, err = c.JudgeWith(context.Background(), "check", "", "input")
+			case "patch":
+				_, err = c.Patch(context.Background(), "/clone", "check")
+			}
+			if !errors.Is(err, ErrLLM) || !strings.Contains(err.Error(), diagnostic) {
+				t.Fatalf("worker failure lost its diagnostic: %v", err)
+			}
+		})
+	}
+}
+
+func TestWorkerCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		failAt  int
+		output  string
+		err     error
+		wantErr bool
+		calls   int
+	}{
+		{"both available", 0, "", nil, false, 2},
+		{"expired login", 1, "OAuth session expired", errors.New("exit status 1"), true, 1},
+		{"code model capped", 2, "Weekly limit reached", errors.New("exit status 1"), true, 2},
+		{"unusable response", 1, "Not ready", nil, true, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := New(nil)
+			calls := 0
+			c.exec = func(ctx context.Context, dir string, args []string, stdin string, env []string) (string, string, error) {
+				calls++
+				if _, ok := ctx.Deadline(); !ok {
+					t.Fatal("worker check must have a timeout")
+				}
+				options := map[string]string{}
+				for i := 0; i+1 < len(args); i++ {
+					options[args[i]] = args[i+1]
+				}
+				if value, ok := options["--tools"]; !ok || value != "" {
+					t.Fatalf("readiness request may use tools: %v", args)
+				}
+				if !strings.Contains(strings.Join(args, " "), "--strict-mcp-config") {
+					t.Fatal("readiness request may load external tools")
+				}
+				if options["--model"] != []string{ModelJudge, ModelCode}[calls-1] {
+					t.Fatalf("unexpected model: %v", args)
+				}
+				if calls == tc.failAt {
+					return tc.output, "", tc.err
+				}
+				return "READY\n", "", nil
+			}
+			err := c.Check(context.Background())
+			if (err != nil) != tc.wantErr || calls != tc.calls {
+				t.Fatalf("error=%v calls=%d", err, calls)
+			}
+			if tc.wantErr && (!errors.Is(err, ErrLLM) || !strings.Contains(err.Error(), tc.output)) {
+				t.Fatalf("lost worker diagnostic: %v", err)
+			}
+		})
+	}
+}
+
 // TestJudgeDisablesEveryTool is a security test, not a behaviour test. Judge
 // is routinely handed a third-party issue thread; anything in that text which
 // reads like an instruction must not be able to reach a file or a shell.

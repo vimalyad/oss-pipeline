@@ -37,6 +37,8 @@ func main() {
 	switch os.Args[1] {
 	case "doctor":
 		code = doctor(root)
+	case "worker-check":
+		code = workerCheckCmd()
 	case "machine":
 		code = machineCmd(root)
 	case "status":
@@ -92,6 +94,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `pipeline <command>
 
   doctor    check stored state, identity config and the kill switch
+  worker-check  verify both worker models can respond (makes two small requests)
   machine   detect what this computer can verify, and re-check every candidate
   status    what is tracked and what is waiting on you
   rescore   re-run the scorer over stored candidates (offline, no API calls)

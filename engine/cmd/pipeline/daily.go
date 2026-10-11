@@ -42,6 +42,11 @@ func dailyCmd(root string, args []string) int {
 		fmt.Fprintf(os.Stderr, "HALT is set (%s); nothing will run\n", reason)
 		return 1
 	}
+	if execute {
+		if code := workerCheckCmd(); code != 0 {
+			return code
+		}
+	}
 	pass := []string{}
 	if execute {
 		pass = append(pass, "--execute")

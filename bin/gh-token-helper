@@ -42,7 +42,9 @@ else
         echo "gh-token-helper: no token file $token_file" >&2
         exit 1
     fi
-    case "$(stat -c %a "$token_file")" in
+    # The scheduled checkout links this file back to the private original.
+    # Check the file being read, not the symlink's ordinary 777 mode.
+    case "$(stat -L -c %a "$token_file")" in
         600|400) ;;
         *) echo "gh-token-helper: $token_file must be mode 600" >&2; exit 1 ;;
     esac

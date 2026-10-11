@@ -78,6 +78,44 @@ func runClaude(ctx context.Context, dir string, args []string, stdin string, env
 	return out.String(), errb.String(), err
 }
 
+// Worker failures such as expired login and usage limits are printed on
+// stdout by the CLI. Keeping only stderr hid the reason for failed daily runs.
+func execFailure(err error, out, errOut string) error {
+	detail := strings.TrimSpace(errOut)
+	if detail == "" {
+		detail = strings.TrimSpace(out)
+	}
+	return fmt.Errorf("%w: %v: %s", ErrLLM, err, text.Ellipsis(detail, 300))
+}
+
+// Check verifies actual access to both worker models before an unattended
+// cycle builds containers or changes candidate state. Stored login metadata
+// alone can still report loggedIn=true for an expired session.
+func (c *Client) Check(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	for _, model := range []string{ModelJudge, ModelCode} {
+		args := []string{
+			"-p", "Reply with exactly READY.", "--model", model,
+			"--tools", "", "--restricted", "--disable-slash-commands",
+			"--no-session-persistence",
+		}
+		args = append(args, isolationFlags()...)
+		out, errOut, err := c.exec(ctx, "", args, "", c.Env)
+		if err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("%w: worker check timed out: %w", ErrLLM, ctx.Err())
+			}
+			return fmt.Errorf("%s unavailable: %w", model, execFailure(err, out, errOut))
+		}
+		if strings.TrimSpace(out) != "READY" {
+			return fmt.Errorf("%w: %s readiness check returned %q", ErrLLM, model, text.Ellipsis(out, 300))
+		}
+		c.logf("worker: %s available", model)
+	}
+	return nil
+}
+
 // Judge asks a question about text, with every tool disabled.
 //
 // The tool restrictions are the point. This call is routinely handed a
@@ -102,7 +140,7 @@ func (c *Client) Judge(ctx context.Context, prompt string) (string, error) {
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("%w: timed out after %s", ErrLLM, timeout)
 		}
-		return "", fmt.Errorf("%w: %v: %s", ErrLLM, err, text.Ellipsis(errOut, 300))
+		return "", execFailure(err, out, errOut)
 	}
 	return strings.TrimSpace(out), nil
 }
@@ -232,7 +270,7 @@ func (c *Client) JudgeWith(ctx context.Context, prompt, system, stdin string) (s
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("%w: timed out after %s", ErrLLM, timeout)
 		}
-		return "", fmt.Errorf("%w: %v: %s", ErrLLM, err, text.Ellipsis(errOut, 300))
+		return "", execFailure(err, out, errOut)
 	}
 	return strings.TrimSpace(out), nil
 }
@@ -277,7 +315,7 @@ func (c *Client) Patch(ctx context.Context, clone, prompt string) (string, error
 		if ctx.Err() != nil {
 			return out, fmt.Errorf("%w: patch timed out after %s", ErrLLM, PatchTimeout)
 		}
-		return out, fmt.Errorf("%w: %v: %s", ErrLLM, err, text.Ellipsis(errOut, 300))
+		return out, execFailure(err, out, errOut)
 	}
 	return strings.TrimSpace(out), nil
 }
